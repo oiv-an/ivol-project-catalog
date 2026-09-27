@@ -1,8 +1,8 @@
 {
   "name": "ivol-project-catalog",
-  "displayName": "Каталог проектов",
-  "description": "Дерево папок ваших проектов в отдельной боковой панели VS Code.",
-  "version": "0.6.1",
+  "displayName": "IVOL Cataloger",
+  "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
+  "version": "0.6.2",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -15,7 +15,7 @@
     "url": "https://github.com/oiv-an/ivol-project-catalog/issues"
   },
   "icon": "media/icon.png",
-  "keywords": ["projects", "catalog", "workspace", "folders", "project manager"],
+  "keywords": ["ivol", "cataloger", "projects", "catalog", "workspace", "folders", "project manager"],
   "engines": {
     "vscode": "^1.85.0"
   },
