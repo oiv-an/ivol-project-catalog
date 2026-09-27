@@ -5,7 +5,23 @@
 Репозиторий: https://github.com/oiv-an/ivol-project-catalog.
 Идентификатор расширения: ivol.ivol-project-catalog. Не меняйте издателя при обновлении.
 
-В GitHub → Settings → Secrets and variables → Actions добавьте:
+### Локальная публикация (проверенный способ)
+
+Marketplace: используется Microsoft Entra ID через сохранённый вход Azure CLI, PAT не требуется. После входа `az login --allow-no-subscriptions` публикация готового пакета:
+
+```sh
+npx --yes --package=node@22 --package=@vscode/vsce@4.0.0 -- vsce publish --azure-credential --packagePath ./ivol-project-catalog-<version>.vsix
+```
+
+Open VSX: передайте сохранённый токен через OVSX_PAT только процессу ovsx. Не выводите токен и не передавайте его аргументом команды. Локальный приватный файл хранится вне репозитория; его расположение зафиксировано в локальных инструкциях сопровождающего.
+
+Версия 0.6.1 принята обоими магазинами этим локальным способом. Первоначальные задания магазинов в GitHub Actions остановились без секретов; это не отменяет последующую успешную локальную загрузку.
+
+### Доступы для GitHub Actions
+
+Сохранённый локальный вход Azure не переносится на GitHub runner. Автоматизация сборки и GitHub Release работает; для автоматической публикации магазинов текущий workflow отдельно требует секреты. Копировать кэш Azure CLI или краткоживущий access token в GitHub нельзя. Переход Marketplace на федеративную авторизацию требует отдельной настройки Entra ID.
+
+Для существующего варианта workflow в GitHub → Settings → Secrets and variables → Actions добавьте:
 
 - VSCE_PAT — токен Microsoft Marketplace с правом публикации издателя ivol.
 - OVSX_PAT — токен Open VSX с правом публикации в namespace ivol.
