@@ -1,0 +1,15 @@
+node_modules/
+*.vsix
+CURRENT_TASK.md
+AI_INSTRUCTIONS.md
+.DS_Store
+.lh/
+.history/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+artifacts/

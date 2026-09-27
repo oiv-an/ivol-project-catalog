@@ -1,0 +1,83 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify release tag
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          node -e 'const v=require("./package.json").version; if(process.env.REF!=="refs/tags/v"+v) throw Error("Run on the tag matching package.json")'
+      - run: npm run check
+      - run: npx --yes @vscode/vsce@4.0.0 package
+      - name: Checksum
+        run: sha256sum *.vsix > SHA256SUMS.txt
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --verify-tag --title "Каталог проектов ${tag}" --notes-file CHANGELOG.md
+          fi
+          gh release upload "$tag" *.vsix SHA256SUMS.txt --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: "*.vsix"
+  marketplace:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+      - name: Publish VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo '::error::Add repository secret VSCE_PAT for publisher ivol, then rerun this job.'
+            exit 1
+          fi
+          npx --yes @vscode/vsce@4.0.0 publish --packagePath ./*.vsix --skip-duplicate
+  open-vsx:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+      - name: Publish Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo '::error::Add repository secret OVSX_PAT with access to namespace ivol, then rerun this job.'
+            exit 1
+          fi
+          npx --yes ovsx@1.2.0 publish ./*.vsix --skip-duplicate

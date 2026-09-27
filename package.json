@@ -1,0 +1,290 @@
+{
+  "name": "ivol-project-catalog",
+  "displayName": "Каталог проектов",
+  "description": "Дерево папок ваших проектов в отдельной боковой панели VS Code.",
+  "version": "0.6.1",
+  "publisher": "ivol",
+  "license": "MIT",
+  "author": "IVOL",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oiv-an/ivol-project-catalog.git"
+  },
+  "homepage": "https://github.com/oiv-an/ivol-project-catalog#readme",
+  "bugs": {
+    "url": "https://github.com/oiv-an/ivol-project-catalog/issues"
+  },
+  "icon": "media/icon.png",
+  "keywords": ["projects", "catalog", "workspace", "folders", "project manager"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:ivolCatalog.panel"
+  ],
+  "scripts": {
+    "check": "node --check src/extension.js && node --check src/scanner.js && node --check src/activity.js && node --check src/settings.js && node --check src/panel.js && node --check media/catalog.js",
+    "package": "npm run check && npx --yes --package=node@22 --package=@vscode/vsce -- vsce package"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ivolCatalog",
+          "title": "Проекты",
+          "icon": "media/projects.svg",
+          "order": 0
+        }
+      ]
+    },
+    "views": {
+      "ivolCatalog": [
+        {
+          "id": "ivolCatalog.panel",
+          "name": "Проекты",
+          "visibility": "visible",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "ivolCatalog.panel",
+        "contents": "Подключите папку с проектами, например PO. Здесь появится её дерево каталогов.\n[Подключить папку](command:ivolCatalog.addRoot)",
+        "when": "!ivolCatalog.hasRoots"
+      }
+    ],
+    "commands": [
+      {
+        "command": "ivolCatalog.addRoot",
+        "title": "Подключить папку",
+        "category": "Проекты",
+        "icon": "$(add)"
+      },
+      {
+        "command": "ivolCatalog.refresh",
+        "title": "Обновить дерево",
+        "category": "Проекты",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ivolCatalog.toggleNewWindow",
+        "title": "Открывать в новом окне",
+        "category": "Проекты",
+        "icon": "$(multiple-windows)",
+        "toggled": "ivolCatalog.newWindow"
+      },
+      {
+        "command": "ivolCatalog.removeRoot",
+        "title": "Отключить папку из каталога",
+        "category": "Проекты",
+        "icon": "$(close)"
+      },
+      {
+        "command": "ivolCatalog.openFolder",
+        "title": "Открыть проект",
+        "category": "Проекты"
+      },
+      {
+        "command": "ivolCatalog.settings",
+        "title": "Настройки каталога",
+        "category": "Проекты",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "ivolCatalog.newProject",
+        "title": "Новый проект",
+        "category": "Проекты",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "ivolCatalog.newProjectHere",
+        "title": "Создать тут новый проект",
+        "category": "Проекты",
+        "icon": "$(new-folder)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "ivolCatalog.newProject",
+          "when": "view == ivolCatalog.panel",
+          "group": "navigation@-1"
+        },
+        {
+          "command": "ivolCatalog.toggleNewWindow",
+          "when": "view == ivolCatalog.panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ivolCatalog.addRoot",
+          "when": "view == ivolCatalog.panel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ivolCatalog.refresh",
+          "when": "view == ivolCatalog.panel",
+          "group": "navigation@3"
+        },
+        {
+          "command": "ivolCatalog.settings",
+          "when": "view == ivolCatalog.panel",
+          "group": "navigation@0"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "ivolCatalog.openFolder",
+          "when": "view == ivolCatalog.panel && viewItem != catalogSection",
+          "group": "1_open"
+        },
+        {
+          "command": "ivolCatalog.removeRoot",
+          "when": "view == ivolCatalog.panel && viewItem == catalogRoot",
+          "group": "inline"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "ivolCatalog.newProjectHere",
+          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder'",
+          "group": "1_create"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "ivolCatalog.newProjectHere",
+          "when": "false"
+        },
+        {
+          "command": "ivolCatalog.removeRoot",
+          "when": "false"
+        },
+        {
+          "command": "ivolCatalog.openFolder",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Каталог проектов",
+      "properties": {
+        "ivolCatalog.folderPreferences": {
+          "type": "object",
+          "default": {},
+          "scope": "application",
+          "description": "Названия, скрытие и включение пропущенных подпапок по абсолютному пути. Управляются кнопками каталога; не изменяют папки на диске.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "relaxed": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ivolCatalog.excludedDirectories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [
+            "ключи",
+            "keys",
+            "secrets",
+            ".ssh",
+            ".gnupg",
+            "credentials",
+            "node_modules",
+            "vendor",
+            ".git",
+            ".svn",
+            ".hg",
+            ".lh",
+            ".history",
+            ".cache",
+            "cache",
+            "__pycache__",
+            ".venv",
+            "venv",
+            "dist",
+            "build",
+            "coverage",
+            ".next",
+            ".nuxt",
+            "target",
+            "bin",
+            "obj",
+            "logs",
+            ".build",
+            ".kilo",
+            ".tools",
+            ".gradle",
+            ".dart_tool",
+            ".swiftpm",
+            "Pods",
+            "DerivedData",
+            "site-packages",
+            "bower_components"
+          ],
+          "scope": "application",
+          "description": "Имена папок, исключаемых из обхода на любой глубине (без учёта регистра). Точные имена, не glob-шаблоны. Папки с ключами добавляйте сюда."
+        },
+        "ivolCatalog.refreshSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "scope": "application",
+          "description": "Интервал фонового пересканирования при видимой панели в секундах. 0 — только вручную. Проверка таймера раз в 5 секунд."
+        },
+        "ivolCatalog.maxScanEntries": {
+          "type": "integer",
+          "default": 200000,
+          "minimum": 1000,
+          "maximum": 2000000,
+          "scope": "application",
+          "description": "Лимит элементов поиска проектов вне уже найденных проектов. Проверка дат имеет отдельный бюджет."
+        },
+        "ivolCatalog.recentLimit": {
+          "type": "integer",
+          "default": 7,
+          "minimum": 1,
+          "maximum": 50,
+          "scope": "application",
+          "description": "Количество проектов в верхнем блоке последних открытых или редактировавшихся проектов."
+        },
+        "ivolCatalog.detectBuildFiles": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "Распознавать проекты по исходникам, файлам сборки и вложенному android с Gradle и app, даже без настроек IDE. Включено по умолчанию; может показывать шаблоны и библиотеки. Выключите для строгого режима IDE/Git."
+        },
+        "ivolCatalog.maxProjectEntries": {
+          "type": "integer",
+          "default": 10000,
+          "minimum": 100,
+          "maximum": 200000,
+          "scope": "application",
+          "description": "Лимит элементов проверки даты одного проекта. Не ограничивает обнаружение остальных проектов."
+        }
+      }
+    }
+  }
+}
