@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.6.2",
+  "version": "0.6.5",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -15,7 +15,15 @@
     "url": "https://github.com/oiv-an/ivol-project-catalog/issues"
   },
   "icon": "media/icon.png",
-  "keywords": ["ivol", "cataloger", "projects", "catalog", "workspace", "folders", "project manager"],
+  "keywords": [
+    "ivol",
+    "cataloger",
+    "projects",
+    "catalog",
+    "workspace",
+    "folders",
+    "project manager"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -107,9 +115,19 @@
       },
       {
         "command": "ivolCatalog.newProjectHere",
-        "title": "Создать тут новый проект",
+        "title": "Создать новый проект внутри папки…",
         "category": "Проекты",
         "icon": "$(new-folder)"
+      },
+      {
+        "command": "ivolCatalog.markProject",
+        "title": "Считать эту папку проектом",
+        "category": "Проекты"
+      },
+      {
+        "command": "ivolCatalog.autoProject",
+        "title": "Вернуть автоопределение",
+        "category": "Проекты"
       }
     ],
     "menus": {
@@ -157,6 +175,16 @@
           "command": "ivolCatalog.newProjectHere",
           "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder'",
           "group": "1_create"
+        },
+        {
+          "command": "ivolCatalog.markProject",
+          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder' && !ivolExplicitProject",
+          "group": "2_project"
+        },
+        {
+          "command": "ivolCatalog.autoProject",
+          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder' && ivolExplicitProject",
+          "group": "2_project"
         }
       ],
       "commandPalette": [
@@ -170,6 +198,14 @@
         },
         {
           "command": "ivolCatalog.openFolder",
+          "when": "false"
+        },
+        {
+          "command": "ivolCatalog.markProject",
+          "when": "false"
+        },
+        {
+          "command": "ivolCatalog.autoProject",
           "when": "false"
         }
       ]
@@ -194,6 +230,10 @@
               },
               "relaxed": {
                 "type": "boolean"
+              },
+              "project": {
+                "type": "boolean",
+                "description": "Явно считать папку проектом независимо от её содержимого."
               }
             },
             "additionalProperties": false

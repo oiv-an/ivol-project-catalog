@@ -69,6 +69,7 @@ function row(node, depth, recent) {
     line.dataset.vscodeContext = JSON.stringify({
       webviewSection: "folder",
       folder: node.folder,
+      ivolExplicitProject: !!node.explicitProject,
       preventDefaultContextMenuItems: true,
     });
   const toggle = document.createElement("button");
@@ -155,6 +156,8 @@ function row(node, depth, recent) {
     control.onclick = () => api.postMessage({ type, id: node.id });
     line.append(control);
   };
+  if (!recent && depth > 0 && !node.project && node.count === 0)
+    action("markProject", "◎", "Считать эту папку проектом — без создания новой");
   if (!recent)
     action("folderMenu", "＋", "Создать папку или добавить пропущенные");
   action("rename", "✎", "Изменить название в каталоге");
@@ -179,6 +182,14 @@ function render() {
   const loading =
     state.hasRoots &&
     (state.scanning || (!state.initialized && !state.scanError));
+  const content = document.getElementById("catalogContent");
+  content.inert = loading;
+  content.classList.toggle("catalog-disabled", loading);
+  content.setAttribute("aria-busy", String(loading));
+  document.getElementById("catalogOverlay").hidden = !loading;
+  const busyText = hasRows ? "Обновление каталога…" : "Загрузка проектов…";
+  const busyLabel = document.getElementById("catalogBusyText");
+  if (busyLabel.textContent !== busyText) busyLabel.textContent = busyText;
   const plural = state.rootCount > 1;
   const message = !state.hasRoots
     ? "Нажмите +, чтобы подключить папку"
@@ -208,7 +219,7 @@ function render() {
     const text = document.createElement("span");
     text.textContent = message;
     status.append(text);
-    status.hidden = !message;
+    status.hidden = loading || !message;
   }
   for (const [id, nodes] of [
     ["recent", state.recent],
@@ -221,7 +232,7 @@ function render() {
     for (const node of nodes) target.append(row(node, 0, id === "recent"));
   }
   document.getElementById("newWindow").checked = state.newWindow;
-  if (focused)
+  if (focused && !loading)
     [...document.querySelectorAll(".row")]
       .find((el) => el.title === focused)
       ?.querySelector(".entry")
@@ -255,8 +266,13 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type !== "state") return;
   if (dragged) {
-    deferredState = data;
-    return;
+    if (data.scanning) {
+      deferredState = undefined;
+      finishDrag();
+    } else {
+      deferredState = data;
+      return;
+    }
   }
   state = data;
   if (

@@ -118,7 +118,11 @@ async function scanRoots(roots, options = {}) {
   const dateBudget = options.maxProjectEntries || 10000;
   const detectFiles = options.detectBuildFiles !== false;
   const relaxed = new Set(options.relaxedFolders || []);
-  const pinned = new Set(options.pinnedFolders || []);
+  const explicitProjects = new Set(options.projectFolders || []);
+  const pinned = new Set([
+    ...(options.pinnedFolders || []),
+    ...explicitProjects,
+  ]);
   const pinnedParents = new Set();
   for (const folder of pinned) {
     for (
@@ -227,7 +231,8 @@ async function scanRoots(roots, options = {}) {
     // Корень — выбранный контейнер, даже если в нём лежат настройки IDE.
     const project =
       !root &&
-      (entries.some(detectFiles ? isMarker : strongMarker) ||
+      (explicitProjects.has(folder) ||
+        entries.some(detectFiles ? isMarker : strongMarker) ||
         (detectFiles && (await hasAndroidApp(folder, entries, depth))));
     const node = {
       folder,

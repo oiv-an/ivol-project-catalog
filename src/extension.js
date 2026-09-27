@@ -77,6 +77,7 @@ class ProjectTree {
               typeof value.name === "string" ? value.name.slice(0, 120) : "",
             hidden: value.hidden === true,
             relaxed: value.relaxed === true,
+            project: value.project === true,
           },
         ]),
     );
@@ -113,6 +114,9 @@ class ProjectTree {
       const preferences = Object.entries(this.preferences);
       const result = await scanRoots(roots, {
         pinnedFolders: this.createdFolders,
+        projectFolders: preferences
+          .filter(([, value]) => value.project)
+          .map(([folder]) => folder),
         relaxedFolders: preferences
           .filter(([, value]) => value.relaxed)
           .map(([folder]) => folder),
@@ -644,7 +648,7 @@ async function activate(context) {
       // Перекрыть старые fallback-настройки нейтральными значениями.
       for (const folder of Object.keys(provider.preferences))
         if (within(from, folder))
-          preferences[folder] = { name: "", hidden: false, relaxed: false };
+          preferences[folder] = { name: "", hidden: false, relaxed: false, project: false };
       await context.globalState.update(CREATED_KEY, [
         ...new Set([...provider.createdFolders.map(remap), destination]),
       ]);
@@ -749,6 +753,11 @@ async function activate(context) {
         await context.globalState.update(CREATED_KEY, [
           ...new Set([...provider.createdFolders, folder]),
         ]);
+        if (options.project)
+          await context.globalState.update(PREFS_KEY, {
+            ...provider.preferences,
+            [folder]: { ...provider.preferences[folder], project: true },
+          });
       } catch (error) {
         throw new Error(
           `Папка создана на диске (${folder}), но не удалось сохранить её в каталоге: ${error.message}`,
@@ -870,6 +879,7 @@ async function activate(context) {
       );
     const folder = await createFolder(parent, {
       anyParent,
+      project: true,
       title: `Новый проект в ${parent}`,
       placeHolder: "Название проекта (папки)",
     });
@@ -880,6 +890,21 @@ async function activate(context) {
       { forceNewWindow: true },
     );
   };
+  const setProjectMode = async (input, explicit) => {
+    const node = findNode(input?.folder);
+    if (!node || node.root || provider.roots.includes(node.folder)) return;
+    const info = await fs.lstat(node.folder);
+    if (!info.isDirectory() || info.isSymbolicLink() ||
+        (await fs.realpath(node.folder)) !== node.folder)
+      throw new Error("Папка недоступна или является ссылкой.");
+    // Сохраняем видимость папки и после возврата к автоопределению.
+    await context.globalState.update(CREATED_KEY, [
+      ...new Set([...provider.createdFolders, node.folder]),
+    ]);
+    await provider.setPreference(node.folder, { project: explicit });
+  };
+  register("ivolCatalog.markProject", (input) => setProjectMode(input, true));
+  register("ivolCatalog.autoProject", (input) => setProjectMode(input, false));
   // Правый клик по строке дерева: webview/context передаёт data-vscode-context.
   register("ivolCatalog.newProjectHere", async (input) => {
     const node = findNode(input?.folder);

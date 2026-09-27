@@ -227,6 +227,40 @@ h2 {
   opacity: 1;
   background: var(--vscode-toolbar-hoverBackground, #333);
 }
+.catalog-disabled {
+  opacity: 0.35;
+  filter: grayscale(1);
+  pointer-events: none;
+  user-select: none;
+}
+.catalog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 18px 10px;
+  background: rgba(80, 80, 80, 0.18);
+  cursor: progress;
+}
+.catalog-overlay[hidden] {
+  display: none;
+}
+.catalog-busy {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid
+    var(--vscode-contrastBorder, var(--vscode-panel-border, #666));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground, #ddd));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+  font-weight: 600;
+}
 .catalog-status {
   display: flex;
   align-items: center;
@@ -282,7 +316,9 @@ h2 {
   }
 }
 
-.row[draggable="true"] { cursor: grab; }
+.row[draggable="true"] {
+  cursor: grab;
+}
 .row.drop-target {
   background: var(--vscode-list-dropBackground, #264f78);
   outline: 2px solid var(--vscode-focusBorder, #459afa);
