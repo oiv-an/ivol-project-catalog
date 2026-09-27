@@ -543,6 +543,85 @@ async function activate(context) {
     return walk(provider.nodes);
   };
   let moving = false;
+  register("ivolCatalog.trashFolder", async (input) => {
+    if (moving) return;
+    moving = true;
+    let trashed = false;
+    try {
+      const folder = input?.folder;
+      const within = (base, file) => {
+        const relative = path.relative(base, file);
+        return (
+          relative === "" ||
+          (!path.isAbsolute(relative) &&
+            relative !== ".." &&
+            !relative.startsWith(".." + path.sep))
+        );
+      };
+      const validate = async () => {
+        const node = typeof folder === "string" ? findNode(folder) : undefined;
+        if (
+          !node ||
+          node.root ||
+          !path.isAbsolute(folder) ||
+          !provider.roots.some((root) => within(root, folder)) ||
+          provider.roots.some((root) => within(folder, root))
+        )
+          throw new Error(
+            "Нельзя удалить корень каталога или папку вне видимого дерева.",
+          );
+        const info = await fs.lstat(folder);
+        if (
+          !info.isDirectory() ||
+          info.isSymbolicLink() ||
+          (await fs.realpath(folder)) !== folder
+        )
+          throw new Error("Папка недоступна или путь изменился.");
+        if (
+          vscode.workspace.textDocuments.some(
+            (doc) =>
+              doc.isDirty &&
+              doc.uri.scheme === "file" &&
+              within(folder, doc.uri.fsPath),
+          )
+        )
+          throw new Error("Сначала сохраните несохранённые файлы этой папки.");
+        return info;
+      };
+      const before = await validate();
+      const choice = await vscode.window.showWarningMessage(
+        "Переместить папку со всем содержимым в корзину?",
+        {
+          modal: true,
+          detail: `${folder}\n\nСохраните файлы и остановите процессы во всех окнах. Файлы и процессы других окон проверить невозможно. Открытые окна автоматически не закрываются. При недоступной корзине удаление будет отменено.`,
+        },
+        "В корзину",
+      );
+      if (choice !== "В корзину") return;
+      const after = await validate();
+      if (before.dev !== after.dev || before.ino !== after.ino)
+        throw new Error(
+          "Папка была заменена во время подтверждения. Повторите действие.",
+        );
+      await vscode.workspace.fs.delete(vscode.Uri.file(folder), {
+        recursive: true,
+        useTrash: true,
+      });
+      trashed = true;
+      await provider.refresh();
+      vscode.window.showInformationMessage(
+        `Папка перемещена в корзину: ${folder}`,
+      );
+    } catch (error) {
+      if (trashed)
+        throw new Error(
+          `Папка уже в корзине, но каталог не обновлён: ${error.message}`,
+        );
+      throw error;
+    } finally {
+      moving = false;
+    }
+  });
   register("ivolCatalog.moveProject", async (input, targetInput) => {
     if (moving) return;
     moving = true;
@@ -648,7 +727,12 @@ async function activate(context) {
       // Перекрыть старые fallback-настройки нейтральными значениями.
       for (const folder of Object.keys(provider.preferences))
         if (within(from, folder))
-          preferences[folder] = { name: "", hidden: false, relaxed: false, project: false };
+          preferences[folder] = {
+            name: "",
+            hidden: false,
+            relaxed: false,
+            project: false,
+          };
       await context.globalState.update(CREATED_KEY, [
         ...new Set([...provider.createdFolders.map(remap), destination]),
       ]);
@@ -894,8 +978,11 @@ async function activate(context) {
     const node = findNode(input?.folder);
     if (!node || node.root || provider.roots.includes(node.folder)) return;
     const info = await fs.lstat(node.folder);
-    if (!info.isDirectory() || info.isSymbolicLink() ||
-        (await fs.realpath(node.folder)) !== node.folder)
+    if (
+      !info.isDirectory() ||
+      info.isSymbolicLink() ||
+      (await fs.realpath(node.folder)) !== node.folder
+    )
       throw new Error("Папка недоступна или является ссылкой.");
     // Сохраняем видимость папки и после возврата к автоопределению.
     await context.globalState.update(CREATED_KEY, [
@@ -1004,7 +1091,7 @@ async function activate(context) {
   });
   register("ivolCatalog.hide", async (input) => {
     const node = findNode(input?.folder);
-    if (!node) return;
+    if (!node || node.root) return;
     await provider.setPreference(node.folder, { hidden: true });
   });
   register("ivolCatalog.manageHidden", async () => {
