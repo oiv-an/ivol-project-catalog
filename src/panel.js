@@ -45,8 +45,9 @@ class CatalogPanel {
       <div id="catalogContent">
       <nav aria-label="Управление каталогом"><button data-command="addRoot" title="Подключить папку">＋</button><button data-command="refresh" title="Обновить">↻</button><button data-command="settings" title="Настройки">⚙</button><label><input id="newWindow" type="checkbox">Новое окно</label></nav>
       <button class="new-project" data-command="newProject" type="button" title="Создать папку нового проекта и открыть её в новом окне"><span class="new-project-icon" aria-hidden="true">＋</span>Новый проект</button>
+      <div class="catalog-search" role="search" aria-label="Поиск в каталоге"><input id="catalogSearch" type="search" placeholder="Поиск папок и проектов…" aria-label="Поиск папок и проектов по названию" aria-controls="tree recent" autocomplete="off" spellcheck="false"><button id="clearSearch" type="button" title="Очистить поиск (Escape)" aria-label="Очистить поиск" hidden>×</button></div>
       <div id="catalogStatus" class="catalog-status" role="status" aria-live="polite" aria-atomic="true"></div>
-      <section class="block recent"><header><h2>Последние активные проекты</h2></header><div id="recent"></div></section>
+      <section id="recentBlock" class="block recent"><header><h2>Последние активные проекты</h2></header><div id="recent"></div></section>
       <section class="block tree"><header><h2>Дерево проектов</h2><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div></section>
       </div>
       <div id="catalogOverlay" class="catalog-overlay" hidden><div class="catalog-busy" role="status" aria-live="polite" aria-atomic="true"><span class="spinner" aria-hidden="true"></span><span id="catalogBusyText">Обновление каталога…</span></div></div>

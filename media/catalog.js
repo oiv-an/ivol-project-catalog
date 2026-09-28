@@ -7,6 +7,20 @@ window.addEventListener("unhandledrejection", (event) =>
 );
 // Раскрытия живут только в этой панели, не восстанавливаются из webview state.
 const expanded = new Set();
+const searchCollapsed = new Set();
+let query = "";
+const searchInput = document.getElementById("catalogSearch");
+const clearSearch = document.getElementById("clearSearch");
+const matchesSearch = (node) => node.name.toLocaleLowerCase().includes(query);
+function filterTree(nodes) {
+  if (!query) return nodes;
+  return nodes.flatMap((node) => {
+    const children = filterTree(node.children);
+    return matchesSearch(node) || children.length
+      ? [{ ...node, children }]
+      : [];
+  });
+}
 let lastCurrent;
 let expansionInitialized = false;
 let state;
@@ -14,14 +28,17 @@ let dragged;
 let deferredState;
 function finishDrag() {
   dragged = undefined;
-  document.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+  document
+    .querySelectorAll(".drop-target")
+    .forEach((el) => el.classList.remove("drop-target"));
   if (deferredState) {
     const data = deferredState;
     deferredState = undefined;
     window.dispatchEvent(new MessageEvent("message", { data }));
   }
 }
-const isExpanded = (id) => expanded.has(id);
+const isExpanded = (id) =>
+  query ? !searchCollapsed.has(id) : expanded.has(id);
 function findAncestors(nodes, current) {
   for (const node of nodes) {
     if (node.folder === current) return [];
@@ -46,7 +63,9 @@ function row(node, depth, recent) {
     };
     line.ondragend = finishDrag;
   } else if (!recent) {
-    const accepts = () => dragged && dragged.folder !== node.folder &&
+    const accepts = () =>
+      dragged &&
+      dragged.folder !== node.folder &&
       !node.folder.startsWith(dragged.folder + "/") &&
       !node.folder.startsWith(dragged.folder + "\\");
     line.ondragover = (event) => {
@@ -56,11 +75,13 @@ function row(node, depth, recent) {
       line.classList.add("drop-target");
     };
     line.ondragleave = (event) => {
-      if (!line.contains(event.relatedTarget)) line.classList.remove("drop-target");
+      if (!line.contains(event.relatedTarget))
+        line.classList.remove("drop-target");
     };
     line.ondrop = (event) => {
       event.preventDefault();
-      if (accepts()) api.postMessage({ type: "move", id: dragged.id, targetId: node.id });
+      if (accepts())
+        api.postMessage({ type: "move", id: dragged.id, targetId: node.id });
       finishDrag();
     };
   }
@@ -82,7 +103,10 @@ function row(node, depth, recent) {
     );
     toggle.setAttribute("aria-expanded", String(isExpanded(node.id)));
     toggle.onclick = () => {
-      if (isExpanded(node.id)) expanded.delete(node.id);
+      if (query) {
+        if (searchCollapsed.has(node.id)) searchCollapsed.delete(node.id);
+        else searchCollapsed.add(node.id);
+      } else if (expanded.has(node.id)) expanded.delete(node.id);
       else expanded.add(node.id);
       render();
     };
@@ -157,7 +181,11 @@ function row(node, depth, recent) {
     line.append(control);
   };
   if (!recent && depth > 0 && !node.project && node.count === 0)
-    action("markProject", "◎", "Считать эту папку проектом — без создания новой");
+    action(
+      "markProject",
+      "◎",
+      "Считать эту папку проектом — без создания новой",
+    );
   if (!recent)
     action("folderMenu", "＋", "Создать папку или добавить пропущенные");
   action("rename", "✎", "Изменить название в каталоге");
@@ -178,7 +206,12 @@ function render() {
   if (!state) return;
   const focused = document.activeElement?.closest(".row")?.title;
   const scroll = window.scrollY;
+  const tree = filterTree(state.tree);
+  const recent = query ? state.recent.filter(matchesSearch) : state.recent;
   const hasRows = state.recent.length > 0 || state.tree.length > 0;
+  const noMatches = query && !tree.length && !recent.length;
+  clearSearch.hidden = !searchInput.value;
+  document.getElementById("recentBlock").hidden = !!query && !recent.length;
   const loading =
     state.hasRoots &&
     (state.scanning || (!state.initialized && !state.scanError));
@@ -198,9 +231,11 @@ function render() {
         ? "Обновляем…"
         : `${plural ? "Папки подключены" : "Папка подключена"}. Загружаем проекты…`
       : state.scanError ||
-        (!hasRows
-          ? `${plural ? "В подключённых папках" : "В подключённой папке"} проекты не найдены`
-          : "");
+        (noMatches
+          ? "Папки и проекты не найдены"
+          : !hasRows
+            ? `${plural ? "В подключённых папках" : "В подключённой папке"} проекты не найдены`
+            : "");
   const status = document.getElementById("catalogStatus");
   // Не переобъявлять тот же live status при фоновой синхронизации активности.
   if (
@@ -222,8 +257,8 @@ function render() {
     status.hidden = loading || !message;
   }
   for (const [id, nodes] of [
-    ["recent", state.recent],
-    ["tree", state.tree],
+    ["recent", recent],
+    ["tree", tree],
   ]) {
     const target = document.getElementById(id);
     target.setAttribute("role", "list");
@@ -239,8 +274,26 @@ function render() {
       ?.focus({ preventScroll: true });
   window.scrollTo(0, scroll);
 }
+function updateSearch() {
+  query = searchInput.value.trim().toLocaleLowerCase();
+  searchCollapsed.clear();
+  render();
+}
+searchInput.addEventListener("input", updateSearch);
+clearSearch.onclick = () => {
+  searchInput.value = "";
+  updateSearch();
+  searchInput.focus();
+};
+searchInput.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && searchInput.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    clearSearch.click();
+  }
+});
 document.getElementById("treeMenu").onclick = () =>
- api.postMessage({ type: "command", command: "treeMenu" });
+  api.postMessage({ type: "command", command: "treeMenu" });
 document
   .querySelectorAll("[data-command]")
   .forEach(

@@ -65,6 +65,45 @@ nav label {
   font-size: 16px;
   line-height: 1;
 }
+.catalog-search {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 8px;
+  padding: 2px;
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: 4px;
+  background: var(--vscode-input-background, #303030);
+  color: var(--vscode-input-foreground, #ddd);
+}
+.catalog-search:focus-within {
+  border-color: var(--vscode-focusBorder, #459afa);
+}
+#catalogSearch {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 3px 6px;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+#catalogSearch::placeholder {
+  color: var(--vscode-input-placeholderForeground, #aaa);
+}
+#catalogSearch::-webkit-search-cancel-button {
+  display: none;
+}
+#clearSearch {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  font-size: 18px;
+}
+#clearSearch:hover {
+  background: var(--vscode-toolbar-hoverBackground, #444);
+}
 .block {
   border: 1px solid var(--vscode-panel-border, #454545);
   border-radius: 5px;
