@@ -364,8 +364,14 @@ async function activate(context) {
     const limit = vscode.workspace
       .getConfiguration("ivolCatalog")
       .get("recentLimit", 7);
-    provider.topProjects = recentProjects(provider.nodes, times, limit);
-    if (current) {
+    const favorites = new Set(provider.favorites);
+    provider.topProjects = recentProjects(
+      provider.nodes,
+      times,
+      limit,
+      favorites,
+    );
+    if (current && !favorites.has(current.folder)) {
       const active = {
         ...current,
         root: false,
@@ -384,11 +390,18 @@ async function activate(context) {
     if (current && view.visible && selectedProject !== current.folder) {
       selectedProject = current.folder;
       void view
-        .reveal(provider.topProjects[0], {
-          select: true,
-          focus: false,
-          expand: false,
-        })
+        .reveal(
+          favorites.has(current.folder)
+            ? provider.favoriteProjects.find(
+                (node) => node.folder === current.folder,
+              )
+            : provider.topProjects[0],
+          {
+            select: true,
+            focus: false,
+            expand: false,
+          },
+        )
         .catch((error) => {
           selectedProject = undefined;
           output.appendLine(
@@ -478,28 +491,11 @@ async function activate(context) {
     if (provider.status) output.appendLine(provider.status);
   };
   provider.onStatus = updateMessage;
-  let lastScan = Date.now();
-  const timer = setInterval(() => {
-    const seconds = vscode.workspace
-      .getConfiguration("ivolCatalog")
-      .get("refreshSeconds", 60);
-    if (
-      seconds > 0 &&
-      view.visible &&
-      !provider.scanning &&
-      Date.now() - lastScan >= seconds * 1000
-    ) {
-      lastScan = Date.now();
-      void provider.refresh();
-    }
-  }, 5000);
-  context.subscriptions.push({ dispose: () => clearInterval(timer) });
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("ivolCatalog")) {
-        lastScan = Date.now();
-        void provider.refresh();
-      }
+      // Настройки сканера применяются при следующем обновлении по кнопке.
+      // Лимит последних проектов можно применить без обхода диска.
+      if (event.affectsConfiguration("ivolCatalog")) redraw();
     }),
   );
   const updateMode = async () => {
@@ -516,7 +512,6 @@ async function activate(context) {
       "ivolCatalog.hasRoots",
       provider.roots.length > 0,
     );
-    lastScan = Date.now();
     void provider.refresh();
   };
 
@@ -608,7 +603,7 @@ async function activate(context) {
         favorites = favorites.filter((folder) => folder !== selected.folder);
       }
       await context.globalState.update(FAVORITES_KEY, favorites);
-      provider.changed.fire();
+      redraw();
     } finally {
       updatingFavorites = false;
     }

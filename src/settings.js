@@ -17,17 +17,17 @@ body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);backgr
 </style></head><body><h2>Каталог проектов</h2>
 <button id="hidden">Скрыть / вернуть папки</button><small>Выберите галочками папки, которые не нужно показывать. Файлы на диске не удаляются.</small>
 <label for="recent">Последних проектов</label><input id="recent" type="number" min="1" max="50" value="7">
-<label for="seconds">Обновление файлов на диске, секунд</label><input id="seconds" type="number" min="0" max="86400"><small>0 — только вручную. Открытие и сохранение файлов учитываются отдельно.</small>
+<small>Каталог сканируется при запуске и по кнопке ↻. Периодического сканирования нет; действия с папками через каталог отражаются сразу. Открытие и сохранение файлов учитываются отдельно.</small>
 <label for="excludes">Исключённые папки — по одному имени в строке</label><textarea id="excludes" rows="8"></textarea>
 <button id="save">Сохранить настройки</button><h3>Корневые папки</h3><small>Содержимое всех корней показывается сразу в каталоге, без дополнительных строк с названиями корней.</small><ul id="roots"></ul><button id="add">Добавить папку</button><p id="status" role="status"></p>
 <script nonce="${nonce}">
 const api=acquireVsCodeApi(); const el=id=>document.getElementById(id);
-el('save').onclick=()=>{el('save').disabled=true;api.postMessage({type:'save',recent:Number(el('recent').value),seconds:Number(el('seconds').value),excludes:el('excludes').value.split('\\n').map(s=>s.trim()).filter(Boolean)});};
+el('save').onclick=()=>{el('save').disabled=true;api.postMessage({type:'save',recent:Number(el('recent').value),excludes:el('excludes').value.split('\\n').map(s=>s.trim()).filter(Boolean)});};
 el('add').onclick=()=>api.postMessage({type:'add'});
 el('hidden').onclick=()=>api.postMessage({type:'hidden'});
 window.addEventListener('message',({data})=>{
  if(data.type==='state'){
- el('recent').value=data.recent;el('seconds').value=data.seconds;el('excludes').value=data.excludes.join('\\n');el('roots').replaceChildren();
+ el('recent').value=data.recent;el('excludes').value=data.excludes.join('\\n');el('roots').replaceChildren();
  for(const folder of data.roots){const li=document.createElement('li');const text=document.createElement('span');text.textContent=folder;const button=document.createElement('button');button.textContent='Отключить';button.onclick=()=>api.postMessage({type:'remove',folder});li.append(text,button);el('roots').append(li);}
  }else if(data.type==='status'){el('status').textContent=data.text;el('save').disabled=false;}
 });api.postMessage({type:'ready'});
@@ -38,7 +38,6 @@ window.addEventListener('message',({data})=>{
       type: "state",
       roots: provider.roots,
       recent: config.get("recentLimit", 7),
-      seconds: config.get("refreshSeconds", 60),
       excludes: config.get("excludedDirectories", DEFAULT_EXCLUDES),
     });
   };
@@ -50,9 +49,6 @@ window.addEventListener('message',({data})=>{
           !Number.isInteger(message.recent) ||
           message.recent < 1 ||
           message.recent > 50 ||
-          !Number.isFinite(message.seconds) ||
-          message.seconds < 0 ||
-          message.seconds > 86400 ||
           !Array.isArray(message.excludes) ||
           message.excludes.length > 500 ||
           message.excludes.some(
@@ -64,7 +60,7 @@ window.addEventListener('message',({data})=>{
           )
         ) {
           throw new Error(
-            "Проверьте поля: проектов 1–50, интервал 0–86400, исключения — имена папок без путей.",
+            "Проверьте поля: проектов 1–50, исключения — имена папок без путей.",
           );
         }
         const config = vscode.workspace.getConfiguration("ivolCatalog");
@@ -74,18 +70,13 @@ window.addEventListener('message',({data})=>{
           vscode.ConfigurationTarget.Global,
         );
         await config.update(
-          "refreshSeconds",
-          message.seconds,
-          vscode.ConfigurationTarget.Global,
-        );
-        await config.update(
           "excludedDirectories",
           [...new Set(message.excludes.map((name) => name.trim()))],
           vscode.ConfigurationTarget.Global,
         );
         await panel.webview.postMessage({
           type: "status",
-          text: "Настройки сохранены",
+          text: "Настройки сохранены. Для применения исключений нажмите ↻ в каталоге.",
         });
       } else if (message.type === "hidden") {
         await vscode.commands.executeCommand("ivolCatalog.manageHidden");

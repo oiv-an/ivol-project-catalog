@@ -96,10 +96,14 @@ function sortByActivity(nodes, times) {
   );
 }
 
-function recentProjects(nodes, times, limit) {
+function recentProjects(nodes, times, limit, excluded = new Set()) {
   const score = (node) => Math.max(node.modified || 0, times[node.folder] || 0);
   return projectsIn(nodes)
-    .filter((node) => !node.placeholder || (times[node.folder] || 0) > 0)
+    .filter(
+      (node) =>
+        !excluded.has(node.folder) &&
+        (!node.placeholder || (times[node.folder] || 0) > 0),
+    )
     .sort((a, b) => score(b) - score(a) || a.folder.localeCompare(b.folder))
     .slice(0, limit)
     .map((node) => ({

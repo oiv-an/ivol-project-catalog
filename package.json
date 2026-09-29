@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.6.9",
+  "version": "0.6.11",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -314,13 +314,6 @@
           ],
           "scope": "application",
           "description": "Имена папок, исключаемых из обхода на любой глубине (без учёта регистра). Точные имена, не glob-шаблоны. Папки с ключами добавляйте сюда."
-        },
-        "ivolCatalog.refreshSeconds": {
-          "type": "number",
-          "default": 60,
-          "minimum": 0,
-          "scope": "application",
-          "description": "Интервал фонового пересканирования при видимой панели в секундах. 0 — только вручную. Проверка таймера раз в 5 секунд."
         },
         "ivolCatalog.maxScanEntries": {
           "type": "integer",
