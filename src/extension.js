@@ -16,6 +16,8 @@ const ROOTS_KEY = "catalog.roots";
 const WINDOW_KEY = "catalog.newWindow";
 const CREATED_KEY = "catalog.createdFolders";
 const PREFS_KEY = "catalog.folderPreferences";
+const FAVORITES_KEY = "catalog.favorites";
+const FAVORITES_LIMIT = 7;
 
 class ProjectTree {
   constructor(context) {
@@ -43,6 +45,35 @@ class ProjectTree {
           (folder) => typeof folder === "string" && path.isAbsolute(folder),
         )
       : [];
+  }
+
+  get favorites() {
+    const saved = this.context.globalState.get(FAVORITES_KEY, []);
+    return Array.isArray(saved)
+      ? [
+          ...new Set(
+            saved.filter(
+              (folder) => typeof folder === "string" && path.isAbsolute(folder),
+            ),
+          ),
+        ].slice(0, FAVORITES_LIMIT)
+      : [];
+  }
+
+  get favoriteProjects() {
+    if (!this.roots.length) return [];
+    const projects = new Map();
+    const visit = (nodes) => {
+      for (const node of nodes) {
+        if (node.project) projects.set(node.folder, node);
+        visit(node.children);
+      }
+    };
+    visit(this.nodes);
+    return this.favorites.flatMap((folder) => {
+      const node = projects.get(folder);
+      return node ? [{ ...node, id: `favorite:${folder}`, children: [] }] : [];
+    });
   }
 
   get preferences() {
@@ -543,6 +574,45 @@ async function activate(context) {
     return walk(provider.nodes);
   };
   let moving = false;
+  let updatingFavorites = false;
+  register("ivolCatalog.toggleFavorite", async (input) => {
+    if (moving || updatingFavorites || provider.scanning) return;
+    const node = findNode(input?.folder);
+    if (!node?.project) return;
+    updatingFavorites = true;
+    try {
+      let favorites = provider.favorites;
+      if (favorites.includes(node.folder)) {
+        favorites = favorites.filter((folder) => folder !== node.folder);
+      } else if (favorites.length < FAVORITES_LIMIT) {
+        favorites.push(node.folder);
+      } else {
+        const choice = await vscode.window.showInformationMessage(
+          "В избранном может быть максимум 7 проектов. Уберите один, чтобы добавить новый.",
+          "Освободить место…",
+        );
+        if (choice !== "Освободить место…") return;
+        const selected = await vscode.window.showQuickPick(
+          favorites.map((folder) => ({
+            label: provider.name({ folder }),
+            description: folder,
+            detail: findNode(folder)?.project
+              ? undefined
+              : "Скрыт или недоступен в каталоге",
+            folder,
+          })),
+          { title: "Убрать проект из избранного (файлы останутся на месте)" },
+        );
+        if (!selected) return;
+        // Только явное удаление: новый проект пользователь добавит звёздочкой.
+        favorites = favorites.filter((folder) => folder !== selected.folder);
+      }
+      await context.globalState.update(FAVORITES_KEY, favorites);
+      provider.changed.fire();
+    } finally {
+      updatingFavorites = false;
+    }
+  });
   register("ivolCatalog.trashFolder", async (input) => {
     if (moving) return;
     moving = true;
@@ -623,7 +693,7 @@ async function activate(context) {
     }
   });
   register("ivolCatalog.moveProject", async (input, targetInput) => {
-    if (moving) return;
+    if (moving || updatingFavorites) return;
     moving = true;
     let destination;
     let moved = false;
@@ -737,6 +807,10 @@ async function activate(context) {
         ...new Set([...provider.createdFolders.map(remap), destination]),
       ]);
       await context.globalState.update(PREFS_KEY, preferences);
+      await context.globalState.update(
+        FAVORITES_KEY,
+        provider.favorites.map(remap),
+      );
       await activity.sync();
       for (const [folder, time] of Object.entries(activity.times))
         if (within(from, folder)) await activity.touch(remap(folder), time);
@@ -1092,7 +1166,18 @@ async function activate(context) {
   register("ivolCatalog.hide", async (input) => {
     const node = findNode(input?.folder);
     if (!node || node.root) return;
-    await provider.setPreference(node.folder, { hidden: true });
+    const choice = await vscode.window.showWarningMessage(
+      "Точно скрыть папку?",
+      {
+        modal: true,
+        detail: `${provider.name(node)}\n${node.folder}\n\nПапка и её вложенные проекты исчезнут из каталога. Файлы останутся на диске. Вернуть папку можно в настройках → «Скрыть / вернуть папки».`,
+      },
+      "Скрыть",
+    );
+    if (choice !== "Скрыть") return;
+    const current = findNode(node.folder);
+    if (!current || current.root) return;
+    await provider.setPreference(current.folder, { hidden: true });
   });
   register("ivolCatalog.manageHidden", async () => {
     const folders = new Map();

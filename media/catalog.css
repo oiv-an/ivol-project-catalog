@@ -133,6 +133,16 @@ h2 {
 #treeMenu:hover {
   background: var(--vscode-toolbar-hoverBackground, #333);
 }
+.favorites {
+  margin-bottom: 10px;
+}
+.row-action.favorite-action {
+  opacity: 1;
+  font-size: 17px;
+}
+.favorite-action[aria-pressed="true"] {
+  color: var(--vscode-editorWarning-foreground, #e5b567);
+}
 .tree {
   margin-top: 10px;
   border-top: 2px solid var(--vscode-panel-border, #555);

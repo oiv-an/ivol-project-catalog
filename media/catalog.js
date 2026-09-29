@@ -162,6 +162,19 @@ function row(node, depth, recent) {
     else if (node.children.length && !recent) toggle.click();
   };
   line.append(toggle, button);
+  if (node.project) {
+    const favorite = document.createElement("button");
+    favorite.className = "row-action favorite-action";
+    favorite.textContent = node.favorite ? "★" : "☆";
+    favorite.title = node.favorite
+      ? "Убрать из избранного"
+      : "Добавить в избранное";
+    favorite.setAttribute("aria-label", `${favorite.title}: ${node.name}`);
+    favorite.setAttribute("aria-pressed", String(!!node.favorite));
+    favorite.onclick = () =>
+      api.postMessage({ type: "toggleFavorite", id: node.id });
+    line.append(favorite);
+  }
   if (!node.project) {
     const open = document.createElement("button");
     open.className = "group-open";
@@ -205,11 +218,30 @@ function row(node, depth, recent) {
 function render() {
   if (!state) return;
   const focused = document.activeElement?.closest(".row")?.title;
+  const focusedBlock = document.activeElement?.closest(".block")?.id;
+  const focusedFavorite =
+    document.activeElement?.classList.contains("favorite-action");
   const scroll = window.scrollY;
   const tree = filterTree(state.tree);
   const recent = query ? state.recent.filter(matchesSearch) : state.recent;
-  const hasRows = state.recent.length > 0 || state.tree.length > 0;
-  const noMatches = query && !tree.length && !recent.length;
+  const favorites = query
+    ? state.favorites.filter(matchesSearch)
+    : state.favorites;
+  const hasRows =
+    state.recent.length > 0 ||
+    state.tree.length > 0 ||
+    state.favorites.length > 0;
+  const noMatches =
+    query && !tree.length && !recent.length && !favorites.length;
+  document.getElementById("favoritesBlock").hidden =
+    !!query && !favorites.length;
+  document.getElementById("favoritesCount").textContent =
+    `${state.favoritesCount} / 7`;
+  const favoritesEmpty = document.getElementById("favoritesEmpty");
+  favoritesEmpty.hidden = favorites.length > 0;
+  favoritesEmpty.textContent = state.favoritesCount
+    ? "Избранные проекты скрыты или недоступны. Верните папку в каталог; при заполненном избранном звёздочка другого проекта позволит освободить место."
+    : "Нажмите ☆ у проекта, чтобы добавить его сюда. Максимум 7.";
   clearSearch.hidden = !searchInput.value;
   document.getElementById("recentBlock").hidden = !!query && !recent.length;
   const loading =
@@ -257,6 +289,7 @@ function render() {
     status.hidden = loading || !message;
   }
   for (const [id, nodes] of [
+    ["favorites", favorites],
     ["recent", recent],
     ["tree", tree],
   ]) {
@@ -264,14 +297,20 @@ function render() {
     target.setAttribute("role", "list");
     target.setAttribute("aria-busy", String(loading));
     target.replaceChildren();
-    for (const node of nodes) target.append(row(node, 0, id === "recent"));
+    for (const node of nodes) target.append(row(node, 0, id !== "tree"));
   }
   document.getElementById("newWindow").checked = state.newWindow;
-  if (focused && !loading)
-    [...document.querySelectorAll(".row")]
-      .find((el) => el.title === focused)
-      ?.querySelector(".entry")
+  if (focused && !loading) {
+    const rows = [...document.querySelectorAll(".row")];
+    const target =
+      rows.find(
+        (el) =>
+          el.title === focused && el.closest(".block")?.id === focusedBlock,
+      ) || rows.find((el) => el.title === focused);
+    target
+      ?.querySelector(focusedFavorite ? ".favorite-action" : ".entry")
       ?.focus({ preventScroll: true });
+  }
   window.scrollTo(0, scroll);
 }
 function updateSearch() {
