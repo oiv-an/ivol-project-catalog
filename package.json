@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.6.11",
+  "version": "0.6.15",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -39,7 +39,7 @@
     "onView:ivolCatalog.panel"
   ],
   "scripts": {
-    "check": "node --check src/extension.js && node --check src/scanner.js && node --check src/activity.js && node --check src/settings.js && node --check src/panel.js && node --check media/catalog.js",
+    "check": "node --check src/extension.js && node --check src/catalog-index.js && node --check src/index-store.js && node --check src/scanner.js && node --check src/activity.js && node --check src/windows.js && node --check src/settings.js && node --check src/panel.js && node --check media/catalog.js",
     "package": "npm run check && npx --yes --package=node@22 --package=@vscode/vsce -- vsce package"
   },
   "contributes": {

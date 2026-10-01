@@ -179,6 +179,19 @@ h2 {
 .row:hover {
   background: var(--vscode-list-hoverBackground, #2c2c2c);
 }
+.row.opened {
+  border-left-color: var(--vscode-testing-iconPassed, #388a34);
+}
+.row.opened .window-badge {
+  color: var(--vscode-testing-iconPassed, #388a34);
+  background: transparent;
+  border: 1px solid currentColor;
+}
+.row.current .window-badge {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+}
 .row.current {
   background: var(--vscode-list-activeSelectionBackground, #094771);
   color: var(--vscode-list-activeSelectionForeground, #fff);

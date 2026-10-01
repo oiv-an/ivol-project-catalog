@@ -52,7 +52,9 @@ function row(node, depth, recent) {
   container.setAttribute("role", "listitem");
   const line = document.createElement("div");
   line.className =
-    "row" + (node.current ? " current" : "") + (recent ? " recent-row" : "");
+    "row" +
+    (node.current ? " current" : node.opened ? " opened" : "") +
+    (recent ? " recent-row" : "");
   line.title = node.folder;
   if (node.project) {
     line.draggable = true;
@@ -120,7 +122,7 @@ function row(node, depth, recent) {
   if (node.current) button.setAttribute("aria-current", "true");
   button.setAttribute(
     "aria-label",
-    `${node.project ? "Проект" : "Группа"} ${node.name}${node.current ? ", активный проект" : ""}`,
+    `${node.project ? "Проект" : "Группа"} ${node.name}${node.current ? ", текущее окно" : node.opened ? ", открыт в другом окне, перейти" : ""}`,
   );
   if (!node.project && node.children.length && !recent)
     button.setAttribute("aria-expanded", String(isExpanded(node.id)));
@@ -143,10 +145,13 @@ function row(node, depth, recent) {
     badge.textContent = node.empty ? "Пустая" : "Папка";
     heading.append(badge);
   }
-  if (node.current) {
+  if (node.current || node.opened) {
     const badge = document.createElement("span");
-    badge.className = "badge";
-    badge.textContent = "Активный";
+    badge.className = "badge window-badge";
+    badge.textContent = node.current ? "● Текущее окно" : "● Открыт";
+    badge.title = node.current
+      ? "Проект в этом окне"
+      : "Нажмите, чтобы перейти в открытое окно проекта";
     heading.append(badge);
   }
   const date = document.createElement("span");
@@ -236,12 +241,12 @@ function render() {
   document.getElementById("favoritesBlock").hidden =
     !!query && !favorites.length;
   document.getElementById("favoritesCount").textContent =
-    `${state.favoritesCount} / 7`;
+    `${state.favoritesCount}`;
   const favoritesEmpty = document.getElementById("favoritesEmpty");
   favoritesEmpty.hidden = favorites.length > 0;
   favoritesEmpty.textContent = state.favoritesCount
-    ? "Избранные проекты скрыты или недоступны. Верните папку в каталог; при заполненном избранном звёздочка другого проекта позволит освободить место."
-    : "Нажмите ☆ у проекта, чтобы добавить его сюда. Максимум 7.";
+    ? "Избранные проекты скрыты или недоступны. Верните папку в каталог."
+    : "Нажмите ☆ у проекта, чтобы добавить его сюда.";
   clearSearch.hidden = !searchInput.value;
   document.getElementById("recentBlock").hidden = !!query && !recent.length;
   const loading =

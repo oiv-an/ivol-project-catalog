@@ -168,6 +168,7 @@ async function scanRoots(roots, options = {}) {
   };
   async function read(folder) {
     check();
+    if (isHidden(folder)) return [];
     try {
       return await fs.readdir(folder, { withFileTypes: true });
     } catch {
@@ -290,6 +291,7 @@ async function scanRoots(roots, options = {}) {
       latest = 0;
     async function walk(dir, depth = 0) {
       check();
+      if (isHidden(dir)) return;
       if (depth > 80 || count >= dateBudget) {
         truncated = true;
         return;
@@ -342,7 +344,13 @@ async function scanRoots(roots, options = {}) {
         .some((part) => excludes.has(part.toLowerCase()))
     )
       continue;
-    const node = await discover(folder, JSON.stringify([folder]), true);
+    const node = await discover(
+      folder,
+      JSON.stringify([folder]),
+      !options.branch,
+      0,
+      !!options.branch,
+    );
     if (node) nodes.push(node);
   }
   const dates = new Map();

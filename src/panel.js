@@ -43,8 +43,8 @@ class CatalogPanel {
     const nonce = randomBytes(16).toString("hex");
     const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><style nonce="${nonce}">${css}</style></head><body>
       <div id="catalogContent">
-      <section id="favoritesBlock" class="block favorites"><header><h2>⭐ Избранное</h2><span id="favoritesCount" class="count"></span></header><div id="favorites"></div><p id="favoritesEmpty" class="empty">Нажмите ☆ у проекта, чтобы добавить его сюда. Максимум 7.</p></section>
-      <nav aria-label="Управление каталогом"><button data-command="addRoot" title="Подключить папку">＋</button><button data-command="refresh" title="Обновить">↻</button><button data-command="settings" title="Настройки">⚙</button><label><input id="newWindow" type="checkbox">Новое окно</label></nav>
+      <section id="favoritesBlock" class="block favorites"><header><h2>⭐ Избранное</h2><span id="favoritesCount" class="count"></span></header><div id="favorites"></div><p id="favoritesEmpty" class="empty">Нажмите ☆ у проекта, чтобы добавить его сюда.</p></section>
+      <nav aria-label="Управление каталогом"><button data-command="addRoot" title="Подключить папку">＋</button><button data-command="refresh" title="Переиндексировать все проекты">↻</button><button data-command="settings" title="Настройки">⚙</button><label><input id="newWindow" type="checkbox">Новое окно</label></nav>
       <button class="new-project" data-command="newProject" type="button" title="Создать папку нового проекта и открыть её в новом окне"><span class="new-project-icon" aria-hidden="true">＋</span>Новый проект</button>
       <div class="catalog-search" role="search" aria-label="Поиск в каталоге"><input id="catalogSearch" type="search" placeholder="Поиск папок и проектов…" aria-label="Поиск папок и проектов по названию" aria-controls="tree recent favorites" autocomplete="off" spellcheck="false"><button id="clearSearch" type="button" title="Очистить поиск (Escape)" aria-label="Очистить поиск" hidden>×</button></div>
       <div id="catalogStatus" class="catalog-status" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -143,6 +143,9 @@ class CatalogPanel {
     const favorites = new Set(this.model.favorites);
     const convert = (node) => {
       this.allowed.set(node.id, node);
+      const windowStatus = node.project
+        ? this.model.windowStatus?.(node.folder) || ""
+        : "";
       return {
         id: node.id,
         name: this.model.name(node),
@@ -153,7 +156,8 @@ class CatalogPanel {
         folder: node.folder,
         project: !!node.project,
         favorite: favorites.has(node.folder),
-        current: !!node.project && node.folder === this.model.currentFolder,
+        current: windowStatus === "current",
+        opened: windowStatus === "open",
         date: node.modified
           ? new Date(node.modified).toLocaleString("ru-RU", {
               day: "2-digit",

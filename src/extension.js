@@ -2,7 +2,7 @@ const vscode = require("vscode");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { realpathSync } = require("node:fs");
-const { scanRoots, DEFAULT_EXCLUDES } = require("./scanner");
+const { DEFAULT_EXCLUDES } = require("./scanner");
 const {
   ActivityStore,
   closestProject,
@@ -11,13 +11,14 @@ const {
 } = require("./activity");
 const { openSettings } = require("./settings");
 const { CatalogPanel } = require("./panel");
+const { WindowStore } = require("./windows");
+const { installIndex } = require("./catalog-index");
 
 const ROOTS_KEY = "catalog.roots";
 const WINDOW_KEY = "catalog.newWindow";
 const CREATED_KEY = "catalog.createdFolders";
 const PREFS_KEY = "catalog.folderPreferences";
 const FAVORITES_KEY = "catalog.favorites";
-const FAVORITES_LIMIT = 7;
 
 class ProjectTree {
   constructor(context) {
@@ -35,11 +36,15 @@ class ProjectTree {
   }
 
   get roots() {
-    return this.context.globalState.get(ROOTS_KEY, []);
+    return (
+      this.sharedIndex?.roots || this.context.globalState.get(ROOTS_KEY, [])
+    );
   }
 
   get createdFolders() {
-    const saved = this.context.globalState.get(CREATED_KEY, []);
+    const saved =
+      this.sharedIndex?.created ||
+      this.context.globalState.get(CREATED_KEY, []);
     return Array.isArray(saved)
       ? saved.filter(
           (folder) => typeof folder === "string" && path.isAbsolute(folder),
@@ -48,7 +53,9 @@ class ProjectTree {
   }
 
   get favorites() {
-    const saved = this.context.globalState.get(FAVORITES_KEY, []);
+    const saved =
+      this.sharedIndex?.favorites ||
+      this.context.globalState.get(FAVORITES_KEY, []);
     return Array.isArray(saved)
       ? [
           ...new Set(
@@ -56,7 +63,7 @@ class ProjectTree {
               (folder) => typeof folder === "string" && path.isAbsolute(folder),
             ),
           ),
-        ].slice(0, FAVORITES_LIMIT)
+        ]
       : [];
   }
 
@@ -77,6 +84,7 @@ class ProjectTree {
   }
 
   get preferences() {
+    if (this.sharedIndex) return this.sharedIndex.preferences;
     const clean = (value) =>
       value && typeof value === "object" && !Array.isArray(value) ? value : {};
     // Старые значения из настроек + globalState (не зависит от реестра настроек).
@@ -126,70 +134,6 @@ class ProjectTree {
     const preferences = { ...this.preferences };
     preferences[folder] = { ...preferences[folder], ...patch };
     await this.savePreferences(preferences);
-  }
-
-  async savePreferences(preferences) {
-    await this.context.globalState.update(PREFS_KEY, preferences);
-    await this.refresh();
-  }
-
-  async refresh() {
-    const generation = ++this.generation;
-    const roots = [...this.roots];
-    this.scanning = true;
-    this.scanError = "";
-    this.status = "Сканирование проектов…";
-    this.onStatus?.();
-    try {
-      const config = vscode.workspace.getConfiguration("ivolCatalog");
-      const preferences = Object.entries(this.preferences);
-      const result = await scanRoots(roots, {
-        pinnedFolders: this.createdFolders,
-        projectFolders: preferences
-          .filter(([, value]) => value.project)
-          .map(([folder]) => folder),
-        relaxedFolders: preferences
-          .filter(([, value]) => value.relaxed)
-          .map(([folder]) => folder),
-        hiddenFolders: preferences
-          .filter(([, value]) => value.hidden)
-          .map(([folder]) => folder),
-        excludes: config.get("excludedDirectories", DEFAULT_EXCLUDES),
-        maxEntries: config.get("maxScanEntries", 200000),
-        detectBuildFiles: config.get("detectBuildFiles", true),
-        maxProjectEntries: config.get("maxProjectEntries", 10000),
-        cancelled: () => this.disposed || generation !== this.generation,
-      });
-      if (generation !== this.generation || this.disposed) return;
-      this.scanError = result.errors
-        ? "Не удалось прочитать часть папок. Проверьте доступ и обновите каталог."
-        : result.limited
-          ? "Поиск не завершён: достигнут лимит. Проверьте настройки каталога."
-          : "";
-      this.nodes = result.nodes;
-      await this.afterScan?.();
-      if (generation !== this.generation || this.disposed) return;
-      this.initialized = true;
-      this.scannedRoots = JSON.stringify(roots);
-      this.status = `Проектов: ${result.projects}`;
-      if (result.errors)
-        this.status += ` · Недоступных объектов: ${result.errors}`;
-      if (result.limited)
-        this.status += " · Поиск проектов неполный: лимит обнаружения";
-      if (result.datesLimited)
-        this.status += ` · Приблизительная дата у ${result.datesLimited} крупных проектов`;
-      this.changed.fire();
-    } catch (error) {
-      if (generation !== this.generation || this.disposed) return;
-      this.scanError =
-        "Не удалось загрузить проекты. Обновите каталог; подробности в журнале «Каталог проектов».";
-      this.status = `Ошибка сканирования: ${error.message}`;
-    } finally {
-      if (generation === this.generation && !this.disposed) {
-        this.scanning = false;
-        this.onStatus?.();
-      }
-    }
   }
 
   countProjects(node) {
@@ -313,6 +257,7 @@ class ProjectTree {
 
 async function activate(context) {
   const provider = new ProjectTree(context);
+  installIndex(provider, context, vscode);
   const view = new CatalogPanel(context, provider);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("ivolCatalog.panel", view),
@@ -320,9 +265,16 @@ async function activate(context) {
   context.subscriptions.push(provider, view);
   const output = vscode.window.createOutputChannel("Каталог проектов");
   context.subscriptions.push(output);
+  provider.log = (message) => {
+    if (!provider.disposed) output.appendLine(message);
+  };
   const activity = new ActivityStore(
     path.join(context.globalStorageUri.fsPath, "activity"),
   );
+  const windows = new WindowStore(
+    path.join(context.globalStorageUri.fsPath, "windows"),
+  );
+  context.subscriptions.push(windows);
   let selectedProject;
   let lastWorkspace;
   const canonicalPath = (file) => {
@@ -331,6 +283,30 @@ async function activate(context) {
     } catch {
       return file;
     }
+  };
+  const windowState = () => {
+    const folders = (vscode.workspace.workspaceFolders || []).filter(
+      (folder) => folder.uri.scheme === "file" && !vscode.env.remoteName,
+    );
+    const workspace = vscode.workspace.workspaceFile;
+    const target = workspace || folders[0]?.uri;
+    return {
+      target: target?.toString() || "",
+      folders: [
+        ...new Set(
+          folders.flatMap((folder) => {
+            const canonical = canonicalPath(folder.uri.fsPath);
+            const project = closestProject(provider.nodes, canonical);
+            return project ? [canonical, project.folder] : [canonical];
+          }),
+        ),
+      ],
+    };
+  };
+  provider.windowStatus = (folder) => {
+    const entry = windows.find(folder);
+    if (entry?.id === windows.id) return "current";
+    return entry ? "open" : "";
   };
   const currentProject = () => {
     const editor = vscode.window.activeTextEditor?.document.uri;
@@ -449,15 +425,48 @@ async function activate(context) {
     remember(folder.uri);
   const initialEditor = vscode.window.activeTextEditor;
   if (initialEditor) remember(initialEditor.document.uri);
-  provider.afterScan = async () => {
+  provider.afterScan = async (generation) => {
+    const started = Date.now();
+    const valid = () =>
+      !provider.disposed && generation === provider.generation;
     try {
-      await activity.sync();
-      for (const [file, time] of pending) await record(file, time);
-      pending.clear();
+      redraw();
+      const timed = async (label, work) => {
+        const start = Date.now();
+        try {
+          await work();
+        } finally {
+          provider.log(`${label}: ${Date.now() - start} мс`);
+        }
+      };
+      const results = await Promise.allSettled([
+        timed("Синхронизация активности", () => activity.sync()),
+        timed("Синхронизация окон", () => windows.sync(windowState())),
+      ]);
+      for (const result of results)
+        if (result.status === "rejected") {
+          report(result.reason);
+          provider.log(
+            `Ошибка фоновой синхронизации: ${result.reason?.message || result.reason}`,
+          );
+        }
+      if (!valid()) return;
+      // Удаляем только записанное событие: новое событие/сканирование
+      // во время await не должно потерять свою запись в pending.
+      for (const [file, time] of [...pending]) {
+        if (!valid()) return;
+        await record(file, time);
+        if (pending.get(file) === time) pending.delete(file);
+      }
+      if (valid()) redraw();
     } catch (error) {
       report(error);
+      provider.log(`Ошибка обновления активности: ${error.message}`);
+    } finally {
+      provider.log(
+        `Фоновое обновление после сканирования: ${Date.now() - started} мс`,
+      );
     }
-    redraw();
   };
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument((document) =>
@@ -468,6 +477,10 @@ async function activate(context) {
     vscode.workspace.onDidChangeWorkspaceFolders((event) => {
       for (const folder of event.added) remember(folder.uri);
       selectedProject = undefined;
+      void windows
+        .sync(windowState())
+        .then(() => redraw())
+        .catch(report);
       redraw();
     }),
   );
@@ -476,7 +489,10 @@ async function activate(context) {
     if (syncing || provider.disposed) return;
     syncing = true;
     try {
-      if (await activity.sync()) redraw();
+      const indexChanged = await provider.syncIndex();
+      const activityChanged = await activity.sync();
+      const windowsChanged = await windows.sync(windowState());
+      if (indexChanged || activityChanged || windowsChanged) redraw();
     } catch (error) {
       report(error);
     } finally {
@@ -543,19 +559,12 @@ async function activate(context) {
     const added = await Promise.all(
       selected.map((uri) => fs.realpath(uri.fsPath)),
     );
-    await context.globalState.update(ROOTS_KEY, [
-      ...new Set([...provider.roots, ...added]),
-    ]);
-    await updateRoots();
+    await provider.addRoots(added);
   });
 
   register("ivolCatalog.removeRoot", async (node) => {
     if (!node || !node.root) return;
-    await context.globalState.update(
-      ROOTS_KEY,
-      provider.roots.filter((folder) => folder !== node.folder),
-    );
-    await updateRoots();
+    await provider.removeRoot(node.folder);
   });
 
   const findNode = (folder) => {
@@ -576,33 +585,14 @@ async function activate(context) {
     if (!node?.project) return;
     updatingFavorites = true;
     try {
-      let favorites = provider.favorites;
+      const beforeFavorites = provider.favorites;
+      let favorites = [...beforeFavorites];
       if (favorites.includes(node.folder)) {
         favorites = favorites.filter((folder) => folder !== node.folder);
-      } else if (favorites.length < FAVORITES_LIMIT) {
-        favorites.push(node.folder);
       } else {
-        const choice = await vscode.window.showInformationMessage(
-          "В избранном может быть максимум 7 проектов. Уберите один, чтобы добавить новый.",
-          "Освободить место…",
-        );
-        if (choice !== "Освободить место…") return;
-        const selected = await vscode.window.showQuickPick(
-          favorites.map((folder) => ({
-            label: provider.name({ folder }),
-            description: folder,
-            detail: findNode(folder)?.project
-              ? undefined
-              : "Скрыт или недоступен в каталоге",
-            folder,
-          })),
-          { title: "Убрать проект из избранного (файлы останутся на месте)" },
-        );
-        if (!selected) return;
-        // Только явное удаление: новый проект пользователь добавит звёздочкой.
-        favorites = favorites.filter((folder) => folder !== selected.folder);
+        favorites.push(node.folder);
       }
-      await context.globalState.update(FAVORITES_KEY, favorites);
+      await provider.setFavorites(favorites, beforeFavorites);
       redraw();
     } finally {
       updatingFavorites = false;
@@ -673,7 +663,7 @@ async function activate(context) {
         useTrash: true,
       });
       trashed = true;
-      await provider.refresh();
+      await provider.removeFolder(folder);
       vscode.window.showInformationMessage(
         `Папка перемещена в корзину: ${folder}`,
       );
@@ -783,34 +773,11 @@ async function activate(context) {
         within(from, folder)
           ? path.join(destination, path.relative(from, folder))
           : folder;
-      const preferences = Object.fromEntries(
-        Object.entries(provider.preferences).map(([folder, value]) => [
-          remap(folder),
-          value,
-        ]),
-      );
-      // Перекрыть старые fallback-настройки нейтральными значениями.
-      for (const folder of Object.keys(provider.preferences))
-        if (within(from, folder))
-          preferences[folder] = {
-            name: "",
-            hidden: false,
-            relaxed: false,
-            project: false,
-          };
-      await context.globalState.update(CREATED_KEY, [
-        ...new Set([...provider.createdFolders.map(remap), destination]),
-      ]);
-      await context.globalState.update(PREFS_KEY, preferences);
-      await context.globalState.update(
-        FAVORITES_KEY,
-        provider.favorites.map(remap),
-      );
+      await provider.moveFolder(from, destination);
       await activity.sync();
       for (const [folder, time] of Object.entries(activity.times))
         if (within(from, folder)) await activity.touch(remap(folder), time);
       await activity.touch(destination);
-      await provider.refresh();
       view.expandFolder(target.folder);
       vscode.window.showInformationMessage(
         `Проект перенесён: ${destination}. Откройте его из каталога по новому пути.`,
@@ -903,20 +870,12 @@ async function activate(context) {
     }
     if (insideRoots(folder)) {
       try {
-        await context.globalState.update(CREATED_KEY, [
-          ...new Set([...provider.createdFolders, folder]),
-        ]);
-        if (options.project)
-          await context.globalState.update(PREFS_KEY, {
-            ...provider.preferences,
-            [folder]: { ...provider.preferences[folder], project: true },
-          });
+        await provider.addFolder(folder, options.project);
       } catch (error) {
         throw new Error(
           `Папка создана на диске (${folder}), но не удалось сохранить её в каталоге: ${error.message}`,
         );
       }
-      await provider.refresh();
       view.expandFolder?.(parent);
     }
     return folder;
@@ -1053,10 +1012,6 @@ async function activate(context) {
       (await fs.realpath(node.folder)) !== node.folder
     )
       throw new Error("Папка недоступна или является ссылкой.");
-    // Сохраняем видимость папки и после возврата к автоопределению.
-    await context.globalState.update(CREATED_KEY, [
-      ...new Set([...provider.createdFolders, node.folder]),
-    ]);
     await provider.setPreference(node.folder, { project: explicit });
   };
   register("ivolCatalog.markProject", (input) => setProjectMode(input, true));
@@ -1212,7 +1167,7 @@ async function activate(context) {
   });
 
   register("ivolCatalog.settings", () => openSettings(context, provider));
-  register("ivolCatalog.refresh", updateRoots);
+  register("ivolCatalog.refresh", () => provider.refresh(true));
   register("ivolCatalog.toggleNewWindow", async () => {
     await context.globalState.update(WINDOW_KEY, !newWindow());
     await updateMode();
@@ -1224,6 +1179,25 @@ async function activate(context) {
     if (!info.isDirectory())
       throw new Error("Выбранный путь больше не является папкой.");
     if (node.project) await record(node.folder).catch(report);
+    // Освежаем реестр непосредственно перед кликом: окно могло закрыться.
+    await windows.sync(windowState()).catch(report);
+    const opened = windows.find(canonicalPath(node.folder));
+    if (opened?.id === windows.id) return;
+    if (opened) {
+      const target = vscode.Uri.parse(opened.target);
+      if (target.scheme !== "file") {
+        vscode.window.showInformationMessage(
+          "Проект открыт в несохранённой рабочей области. Сохраните её в файл для переключения из каталога.",
+        );
+        return;
+      }
+      // VS Code сначала ищет точное совпадение папки/workspace и фокусирует
+      // существующее окно. forceNewWindow защищает исходное окно при гонке закрытия.
+      await vscode.commands.executeCommand("vscode.openFolder", target, {
+        forceNewWindow: true,
+      });
+      return;
+    }
     await vscode.commands.executeCommand(
       "vscode.openFolder",
       vscode.Uri.file(node.folder),
