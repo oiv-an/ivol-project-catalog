@@ -110,6 +110,9 @@ nav label {
   overflow: hidden;
   background: var(--vscode-editor-background, #202020);
 }
+#openedBlock:not([hidden]) + #recentBlock:not([hidden]) {
+  margin-top: 10px;
+}
 .block header {
   display: flex;
   align-items: center;
@@ -146,6 +149,26 @@ h2 {
 .tree {
   margin-top: 10px;
   border-top: 2px solid var(--vscode-panel-border, #555);
+}
+#favorites .row {
+  cursor: grab;
+}
+#favorites .favorite-before::after,
+#favorites .favorite-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--vscode-focusBorder, #439aff);
+  pointer-events: none;
+  z-index: 1;
+}
+#favorites .favorite-before::after {
+  top: 0;
+}
+#favorites .favorite-after::after {
+  bottom: 0;
 }
 .row {
   display: flex;
@@ -188,10 +211,34 @@ h2 {
   font-size: 11px;
 }
 #treeMode {
-  width: auto;
-  padding: 2px 6px;
-  font-size: 11px;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+#treeMode:hover {
+  background: var(--vscode-toolbar-hoverBackground, #333);
+}
+#treeMode svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#treeMode .mode-folder,
+#treeMode.activity-view .mode-clock {
+  display: none;
+}
+#treeMode.activity-view .mode-folder {
+  display: block;
 }
 .agent-badge {
   display: inline-block;

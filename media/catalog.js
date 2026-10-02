@@ -30,8 +30,10 @@ let deferredState;
 function finishDrag() {
   dragged = undefined;
   document
-    .querySelectorAll(".drop-target")
-    .forEach((el) => el.classList.remove("drop-target"));
+    .querySelectorAll(".drop-target, .favorite-before, .favorite-after")
+    .forEach((el) =>
+      el.classList.remove("drop-target", "favorite-before", "favorite-after"),
+    );
   if (deferredState) {
     const data = deferredState;
     deferredState = undefined;
@@ -65,9 +67,43 @@ function row(node, depth, recent) {
       event.dataTransfer.setData("application/x-ivol-project", node.id);
     };
     line.ondragend = finishDrag;
+    if (node.id.startsWith("favorite:")) {
+      const accepts = () =>
+        dragged?.id.startsWith("favorite:") && dragged.folder !== node.folder;
+      const after = (event) =>
+        event.clientY >
+        line.getBoundingClientRect().top + line.offsetHeight / 2;
+      line.ondragover = (event) => {
+        if (!accepts()) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        document
+          .querySelectorAll(".favorite-before, .favorite-after")
+          .forEach((el) =>
+            el.classList.remove("favorite-before", "favorite-after"),
+          );
+        line.classList.add(after(event) ? "favorite-after" : "favorite-before");
+      };
+      line.ondragleave = (event) => {
+        if (!line.contains(event.relatedTarget))
+          line.classList.remove("favorite-before", "favorite-after");
+      };
+      line.ondrop = (event) => {
+        event.preventDefault();
+        if (accepts())
+          api.postMessage({
+            type: "reorderFavorite",
+            id: dragged.id,
+            targetId: node.id,
+            after: after(event),
+          });
+        finishDrag();
+      };
+    }
   } else if (!recent) {
     const accepts = () =>
       dragged &&
+      !dragged.id.startsWith("favorite:") &&
       dragged.folder !== node.folder &&
       !node.folder.startsWith(dragged.folder + "/") &&
       !node.folder.startsWith(dragged.folder + "\\");
@@ -268,10 +304,11 @@ function render() {
     ? "Все проекты"
     : "Дерево проектов";
   const modeButton = document.getElementById("treeMode");
-  modeButton.textContent = activityView ? "По папкам" : "По активности";
+  modeButton.classList.toggle("activity-view", activityView);
   modeButton.title = activityView
     ? "Вернуть дерево папок"
     : "Все проекты: последние использованные или изменённые сверху";
+  modeButton.setAttribute("aria-label", modeButton.title);
   modeButton.setAttribute("aria-pressed", String(activityView));
   const opened = query ? state.opened.filter(matchesSearch) : state.opened;
   const recent = query ? state.recent.filter(matchesSearch) : state.recent;

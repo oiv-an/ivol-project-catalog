@@ -312,6 +312,18 @@ function installIndex(provider, context, vscode) {
       data.favorites = data.favorites.map(remap);
       insert(data, moved);
     });
+  provider.reorderFavorite = (source, target, after) =>
+    provider.changeIndex((data) => {
+      if (
+        source === target ||
+        !data.favorites.includes(source) ||
+        !data.favorites.includes(target)
+      )
+        return;
+      const next = data.favorites.filter((folder) => folder !== source);
+      next.splice(next.indexOf(target) + (after ? 1 : 0), 0, source);
+      data.favorites = next;
+    });
   provider.setFavorites = (favorites, before) =>
     provider.changeIndex((data) => {
       const removed = before.filter((f) => !favorites.includes(f));
