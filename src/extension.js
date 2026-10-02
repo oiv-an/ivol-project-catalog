@@ -8,6 +8,7 @@ const {
   closestProject,
   sortByActivity,
   recentProjects,
+  projectsIn,
 } = require("./activity");
 const { openSettings } = require("./settings");
 const { CatalogPanel } = require("./panel");
@@ -304,6 +305,7 @@ async function activate(context) {
     };
   };
   provider.windowStatus = (folder) => {
+    if (provider.ownOpenFolders?.has(folder)) return "current";
     const entry = windows.find(folder);
     if (entry?.id === windows.id) return "current";
     return entry ? "open" : "";
@@ -341,27 +343,37 @@ async function activate(context) {
       .getConfiguration("ivolCatalog")
       .get("recentLimit", 7);
     const favorites = new Set(provider.favorites);
+    const ownFolders = new Set(windowState().folders);
+    provider.ownOpenFolders = ownFolders;
+    provider.openProjects = projectsIn(provider.nodes)
+      .filter(
+        (node) => ownFolders.has(node.folder) || windows.find(node.folder),
+      )
+      .sort(
+        (a, b) =>
+          Number(b.folder === current?.folder) -
+            Number(a.folder === current?.folder) ||
+          provider
+            .name(a)
+            .localeCompare(provider.name(b), "ru", { numeric: true }) ||
+          a.folder.localeCompare(b.folder),
+      )
+      .map((node) => ({
+        ...node,
+        root: false,
+        children: [],
+        recent: true,
+        id: `open:${node.folder}`,
+      }));
     provider.topProjects = recentProjects(
       provider.nodes,
       times,
       limit,
-      favorites,
+      new Set([
+        ...favorites,
+        ...provider.openProjects.map((node) => node.folder),
+      ]),
     );
-    if (current && !favorites.has(current.folder)) {
-      const active = {
-        ...current,
-        root: false,
-        children: [],
-        recent: true,
-        id: `recent:${current.folder}`,
-      };
-      provider.topProjects = [
-        active,
-        ...provider.topProjects.filter(
-          (node) => node.folder !== current.folder,
-        ),
-      ].slice(0, limit);
-    }
     provider.changed.fire();
     if (current && view.visible && selectedProject !== current.folder) {
       selectedProject = current.folder;
@@ -371,7 +383,9 @@ async function activate(context) {
             ? provider.favoriteProjects.find(
                 (node) => node.folder === current.folder,
               )
-            : provider.topProjects[0],
+            : provider.openProjects.find(
+                (node) => node.folder === current.folder,
+              ),
           {
             select: true,
             focus: false,

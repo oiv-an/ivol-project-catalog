@@ -119,6 +119,7 @@ function recentProjects(nodes, times, limit, excluded = new Set()) {
 module.exports = {
   ActivityStore,
   closestProject,
+  projectsIn,
   sortByActivity,
   recentProjects,
 };

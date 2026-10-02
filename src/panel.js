@@ -46,8 +46,9 @@ class CatalogPanel {
       <section id="favoritesBlock" class="block favorites"><header><h2>⭐ Избранное</h2><span id="favoritesCount" class="count"></span></header><div id="favorites"></div><p id="favoritesEmpty" class="empty">Нажмите ☆ у проекта, чтобы добавить его сюда.</p></section>
       <nav aria-label="Управление каталогом"><button data-command="addRoot" title="Подключить папку">＋</button><button data-command="refresh" title="Переиндексировать все проекты">↻</button><button data-command="settings" title="Настройки">⚙</button><label><input id="newWindow" type="checkbox">Новое окно</label></nav>
       <button class="new-project" data-command="newProject" type="button" title="Создать папку нового проекта и открыть её в новом окне"><span class="new-project-icon" aria-hidden="true">＋</span>Новый проект</button>
-      <div class="catalog-search" role="search" aria-label="Поиск в каталоге"><input id="catalogSearch" type="search" placeholder="Поиск папок и проектов…" aria-label="Поиск папок и проектов по названию" aria-controls="tree recent favorites" autocomplete="off" spellcheck="false"><button id="clearSearch" type="button" title="Очистить поиск (Escape)" aria-label="Очистить поиск" hidden>×</button></div>
+      <div class="catalog-search" role="search" aria-label="Поиск в каталоге"><input id="catalogSearch" type="search" placeholder="Поиск папок и проектов…" aria-label="Поиск папок и проектов по названию" aria-controls="tree opened recent favorites" autocomplete="off" spellcheck="false"><button id="clearSearch" type="button" title="Очистить поиск (Escape)" aria-label="Очистить поиск" hidden>×</button></div>
       <div id="catalogStatus" class="catalog-status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <section id="openedBlock" class="block recent"><header><h2>Открытые проекты</h2></header><div id="opened"></div></section>
       <section id="recentBlock" class="block recent"><header><h2>Последние активные проекты</h2></header><div id="recent"></div></section>
       <section class="block tree"><header><h2>Дерево проектов</h2><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div></section>
       </div>
@@ -183,6 +184,10 @@ class CatalogPanel {
       rootCount: this.model.roots.length,
       favorites: this.model.favoriteProjects.map(convert),
       favoritesCount: favorites.size,
+      opened: (this.model.roots.length
+        ? this.model.openProjects || []
+        : []
+      ).map(convert),
       recent: (this.model.roots.length ? this.model.topProjects || [] : []).map(
         convert,
       ),

@@ -228,16 +228,22 @@ function render() {
     document.activeElement?.classList.contains("favorite-action");
   const scroll = window.scrollY;
   const tree = filterTree(state.tree);
+  const opened = query ? state.opened.filter(matchesSearch) : state.opened;
   const recent = query ? state.recent.filter(matchesSearch) : state.recent;
   const favorites = query
     ? state.favorites.filter(matchesSearch)
     : state.favorites;
   const hasRows =
+    state.opened.length > 0 ||
     state.recent.length > 0 ||
     state.tree.length > 0 ||
     state.favorites.length > 0;
   const noMatches =
-    query && !tree.length && !recent.length && !favorites.length;
+    query &&
+    !tree.length &&
+    !opened.length &&
+    !recent.length &&
+    !favorites.length;
   document.getElementById("favoritesBlock").hidden =
     !!query && !favorites.length;
   document.getElementById("favoritesCount").textContent =
@@ -248,6 +254,7 @@ function render() {
     ? "Избранные проекты скрыты или недоступны. Верните папку в каталог."
     : "Нажмите ☆ у проекта, чтобы добавить его сюда.";
   clearSearch.hidden = !searchInput.value;
+  document.getElementById("openedBlock").hidden = !!query && !opened.length;
   document.getElementById("recentBlock").hidden = !!query && !recent.length;
   const loading =
     state.hasRoots &&
@@ -295,6 +302,7 @@ function render() {
   }
   for (const [id, nodes] of [
     ["favorites", favorites],
+    ["opened", opened],
     ["recent", recent],
     ["tree", tree],
   ]) {
