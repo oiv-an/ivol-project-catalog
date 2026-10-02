@@ -110,8 +110,8 @@ nav label {
   overflow: hidden;
   background: var(--vscode-editor-background, #202020);
 }
-#openedBlock:not([hidden]) + #recentBlock:not([hidden]) {
-  margin-top: 10px;
+#openedBlock:not([hidden]) {
+  margin-bottom: 10px;
 }
 .block header {
   display: flex;

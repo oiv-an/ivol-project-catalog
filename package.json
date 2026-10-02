@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.6.21",
+  "version": "0.6.22",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
