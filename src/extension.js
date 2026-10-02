@@ -13,6 +13,7 @@ const {
 const { openSettings } = require("./settings");
 const { CatalogPanel } = require("./panel");
 const { WindowStore } = require("./windows");
+const { AgentStatus } = require("./agent-status");
 const { installIndex } = require("./catalog-index");
 
 const ROOTS_KEY = "catalog.roots";
@@ -276,6 +277,7 @@ async function activate(context) {
     path.join(context.globalStorageUri.fsPath, "windows"),
   );
   context.subscriptions.push(windows);
+  const agent = new AgentStatus();
   let selectedProject;
   let lastWorkspace;
   const canonicalPath = (file) => {
@@ -286,6 +288,13 @@ async function activate(context) {
     }
   };
   const windowState = () => {
+    agent.poll();
+    const agentState = agent.value ? { ...agent.value } : null;
+    if (agentState?.folder) {
+      const folder = canonicalPath(agentState.folder);
+      agentState.folder =
+        closestProject(provider.nodes, folder)?.folder || folder;
+    }
     const folders = (vscode.workspace.workspaceFolders || []).filter(
       (folder) => folder.uri.scheme === "file" && !vscode.env.remoteName,
     );
@@ -293,6 +302,7 @@ async function activate(context) {
     const target = workspace || folders[0]?.uri;
     return {
       target: target?.toString() || "",
+      agent: agentState,
       folders: [
         ...new Set(
           folders.flatMap((folder) => {
@@ -309,6 +319,26 @@ async function activate(context) {
     const entry = windows.find(folder);
     if (entry?.id === windows.id) return "current";
     return entry ? "open" : "";
+  };
+  provider.agentStatus = (folder) => {
+    const entries = windows.entries.filter((entry) =>
+      entry.folders.includes(folder),
+    );
+    const states = entries
+      .map((entry) => {
+        const state = entry.agent;
+        if (!state) return null;
+        // В multi-root активная задача относится только к своему проекту.
+        if (state.folder && state.folder !== folder) return "idle";
+        return state.status;
+      })
+      .filter(Boolean);
+    // Один проект может быть открыт в нескольких окнах: работа важнее простоя.
+    return (
+      ["running", "waiting", "unknown", "stopped", "idle", "inactive"].find(
+        (status) => states.includes(status),
+      ) || ""
+    );
   };
   const currentProject = () => {
     const editor = vscode.window.activeTextEditor?.document.uri;

@@ -154,6 +154,27 @@ function row(node, depth, recent) {
       : "Нажмите, чтобы перейти в открытое окно проекта";
     heading.append(badge);
   }
+  if ((node.current || node.opened) && node.agent) {
+    const labels = {
+      running: "Агент выполняет задачу",
+      waiting: "Агент ждёт ответа или подтверждения",
+      stopped: "Агент остановлен / ожидает возобновления",
+      idle: "Агент не выполняет задачу",
+      inactive: "Расширение агента не активировано",
+      unknown: "Статус агента недоступен",
+    };
+    const label = labels[node.agent];
+    if (label) {
+      const badge = document.createElement("span");
+      badge.className = `agent-badge agent-${node.agent}`;
+      badge.textContent =
+        node.agent === "running" ? "◌" : node.agent === "unknown" ? "?" : "■";
+      badge.title = `IVOL Code Agent 5: ${label}. Обновление раз в минуту.`;
+      badge.setAttribute("role", "img");
+      badge.setAttribute("aria-label", badge.title);
+      heading.append(badge);
+    }
+  }
   const date = document.createElement("span");
   date.className = "date";
   date.textContent = node.date

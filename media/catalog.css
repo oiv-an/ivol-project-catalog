@@ -192,6 +192,31 @@ h2 {
   color: inherit;
   border: 1px solid currentColor;
 }
+.agent-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #999);
+}
+.agent-running {
+  color: var(--vscode-testing-iconPassed, #388a34);
+  animation: agent-spin 1.5s linear infinite;
+}
+.agent-waiting,
+.agent-unknown {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+@keyframes agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-running {
+    animation: none;
+  }
+}
 .row.current {
   background: var(--vscode-list-activeSelectionBackground, #094771);
   color: var(--vscode-list-activeSelectionForeground, #fff);

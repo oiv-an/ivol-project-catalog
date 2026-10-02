@@ -159,6 +159,7 @@ class CatalogPanel {
         favorite: favorites.has(node.folder),
         current: windowStatus === "current",
         opened: windowStatus === "open",
+        agent: windowStatus ? this.model.agentStatus?.(node.folder) || "" : "",
         date: node.modified
           ? new Date(node.modified).toLocaleString("ru-RU", {
               day: "2-digit",

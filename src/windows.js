@@ -46,6 +46,25 @@ class WindowStore {
           entries.push({
             id: data.id,
             target: data.target,
+            agent:
+              data.agent &&
+              [
+                "running",
+                "waiting",
+                "stopped",
+                "idle",
+                "inactive",
+                "unknown",
+              ].includes(data.agent.status)
+                ? {
+                    status: data.agent.status,
+                    folder:
+                      typeof data.agent.folder === "string" &&
+                      path.isAbsolute(data.agent.folder)
+                        ? data.agent.folder
+                        : "",
+                  }
+                : null,
             folders: data.folders.filter(
               (folder) => typeof folder === "string" && path.isAbsolute(folder),
             ),
