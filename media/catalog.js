@@ -1,4 +1,5 @@
 const api = acquireVsCodeApi();
+let activityView = api.getState()?.activityView === true;
 window.addEventListener("error", (event) =>
   api.postMessage({ type: "clientError", message: event.message }),
 );
@@ -147,11 +148,16 @@ function row(node, depth, recent) {
   }
   if (node.current || node.opened) {
     const badge = document.createElement("span");
-    badge.className = "badge window-badge";
-    badge.textContent = node.current ? "● Текущее окно" : "● Открыт";
+    badge.className = "window-badge";
+    badge.textContent = "●";
     badge.title = node.current
       ? "Проект в этом окне"
       : "Нажмите, чтобы перейти в открытое окно проекта";
+    badge.setAttribute("role", "img");
+    badge.setAttribute(
+      "aria-label",
+      node.current ? "Текущее окно" : "Проект открыт",
+    );
     heading.append(badge);
   }
   if ((node.current || node.opened) && node.agent) {
@@ -180,7 +186,9 @@ function row(node, depth, recent) {
   date.textContent = node.date
     ? node.date.replace(/^(\d{2}\.\d{2})\.\d{2}(\d{2}).*$/, "$1.$2")
     : "—";
-  date.title = node.date ? `Изменён: ${node.date}` : "Нет даты изменения";
+  date.title = node.date
+    ? `${node.activityDate !== undefined ? "Последняя активность" : "Изменён"}: ${node.date}`
+    : "Нет даты изменения";
   date.setAttribute("aria-label", date.title);
   button.append(heading, date);
   button.onclick = () => {
@@ -248,7 +256,23 @@ function render() {
   const focusedFavorite =
     document.activeElement?.classList.contains("favorite-action");
   const scroll = window.scrollY;
-  const tree = filterTree(state.tree);
+  const tree = activityView
+    ? (state.allProjects || [])
+        .filter((node) => !query || matchesSearch(node))
+        .map((node) => ({
+          ...node,
+          date: node.activityDate,
+        }))
+    : filterTree(state.tree);
+  document.getElementById("treeTitle").textContent = activityView
+    ? "Все проекты"
+    : "Дерево проектов";
+  const modeButton = document.getElementById("treeMode");
+  modeButton.textContent = activityView ? "По папкам" : "По активности";
+  modeButton.title = activityView
+    ? "Вернуть дерево папок"
+    : "Все проекты: последние использованные или изменённые сверху";
+  modeButton.setAttribute("aria-pressed", String(activityView));
   const opened = query ? state.opened.filter(matchesSearch) : state.opened;
   const recent = query ? state.recent.filter(matchesSearch) : state.recent;
   const favorites = query
@@ -365,6 +389,11 @@ searchInput.addEventListener("keydown", (event) => {
     clearSearch.click();
   }
 });
+document.getElementById("treeMode").onclick = () => {
+  activityView = !activityView;
+  api.setState({ ...api.getState(), activityView });
+  render();
+};
 document.getElementById("treeMenu").onclick = () =>
   api.postMessage({ type: "command", command: "treeMenu" });
 document

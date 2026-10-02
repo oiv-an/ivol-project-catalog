@@ -182,15 +182,16 @@ h2 {
 .row.opened {
   border-left-color: var(--vscode-testing-iconPassed, #388a34);
 }
-.row.opened .window-badge {
+.window-badge {
   color: var(--vscode-testing-iconPassed, #388a34);
-  background: transparent;
-  border: 1px solid currentColor;
+  flex-shrink: 0;
+  font-size: 11px;
 }
-.row.current .window-badge {
-  background: transparent;
-  color: inherit;
-  border: 1px solid currentColor;
+#treeMode {
+  width: auto;
+  padding: 2px 6px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 .agent-badge {
   display: inline-block;

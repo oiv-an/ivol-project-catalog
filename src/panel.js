@@ -50,7 +50,7 @@ class CatalogPanel {
       <div id="catalogStatus" class="catalog-status" role="status" aria-live="polite" aria-atomic="true"></div>
       <section id="openedBlock" class="block recent"><header><h2>Открытые проекты</h2></header><div id="opened"></div></section>
       <section id="recentBlock" class="block recent"><header><h2>Последние активные проекты</h2></header><div id="recent"></div></section>
-      <section class="block tree"><header><h2>Дерево проектов</h2><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div></section>
+      <section id="treeBlock" class="block tree"><header><h2 id="treeTitle">Дерево проектов</h2><button id="treeMode" type="button" title="Показать все проекты по последней активности" aria-pressed="false">По активности</button><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div></section>
       </div>
       <div id="catalogOverlay" class="catalog-overlay" hidden><div class="catalog-busy" role="status" aria-live="polite" aria-atomic="true"><span class="spinner" aria-hidden="true"></span><span id="catalogBusyText">Обновление каталога…</span></div></div>
       <script nonce="${nonce}">${js}</script></body></html>`;
@@ -193,6 +193,12 @@ class CatalogPanel {
         convert,
       ),
       tree: rows.filter((n) => !n.section && !n.recent).map(convert),
+      allProjects: (this.model.roots.length ? this.model.allProjects || [] : []).map((node) => ({
+        ...convert(node),
+        activityDate: node.activity ? new Date(node.activity).toLocaleString("ru-RU", {
+          day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+        }) : "",
+      })),
       newWindow: this.context.globalState.get("catalog.newWindow", true),
       hasRoots: this.model.roots.length > 0,
     });

@@ -395,6 +395,20 @@ async function activate(context) {
         recent: true,
         id: `open:${node.folder}`,
       }));
+    provider.allProjects = projectsIn(provider.nodes)
+      .map((node) => ({
+        ...node,
+        children: [],
+        root: false,
+        activity: Math.max(
+          node.modified || 0,
+          activity.times[node.folder] || 0,
+        ),
+        id: `activity:${node.folder}`,
+      }))
+      .sort(
+        (a, b) => b.activity - a.activity || a.folder.localeCompare(b.folder),
+      );
     provider.topProjects = recentProjects(
       provider.nodes,
       times,
