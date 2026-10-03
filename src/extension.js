@@ -941,6 +941,7 @@ async function activate(context) {
   // Пошаговый выбор: показываем только один уровень групп, внутрь — по нажатию.
   const pickProjectParent = () =>
     new Promise((resolve) => {
+      sortByActivity(provider.nodes, activity.times);
       const quick = vscode.window.createQuickPick();
       quick.title = "Новый проект: где создать?";
       quick.matchOnDescription = true;
@@ -952,8 +953,10 @@ async function activate(context) {
               .filter((node) => !node.project)
               .map((node) => [node.folder, node]),
           ).values(),
-        ].sort((a, b) =>
-          provider.name(a).localeCompare(provider.name(b), "ru"),
+        ].sort(
+          (a, b) =>
+            (b.activity || 0) - (a.activity || 0) ||
+            a.folder.localeCompare(b.folder, "ru", { numeric: true }),
         );
       const createHere = {
         iconPath: new vscode.ThemeIcon("new-folder"),
