@@ -183,20 +183,6 @@ function row(node, depth, recent) {
     heading.append(badge);
   }
   if (node.current || node.opened) {
-    const badge = document.createElement("span");
-    badge.className = "window-badge";
-    badge.textContent = "●";
-    badge.title = node.current
-      ? "Проект в этом окне"
-      : "Нажмите, чтобы перейти в открытое окно проекта";
-    badge.setAttribute("role", "img");
-    badge.setAttribute(
-      "aria-label",
-      node.current ? "Текущее окно" : "Проект открыт",
-    );
-    heading.append(badge);
-  }
-  if ((node.current || node.opened) && node.agent) {
     const labels = {
       running: "Агент выполняет задачу",
       waiting: "Агент ждёт ответа или подтверждения",
@@ -208,16 +194,23 @@ function row(node, depth, recent) {
       unknown: "Статус агента недоступен",
     };
     const label = labels[node.agent];
-    if (label) {
-      const badge = document.createElement("span");
-      badge.className = `agent-badge agent-${node.agent}`;
-      badge.textContent =
-        { running: "◌", completed: "●", none: "○", unknown: "?" }[node.agent] || "■";
-      badge.title = `IVOL Code Agent 5: ${label}. Обновление раз в минуту.`;
-      badge.setAttribute("role", "img");
-      badge.setAttribute("aria-label", badge.title);
-      heading.append(badge);
-    }
+    const badge = document.createElement("span");
+    badge.className = label
+      ? `agent-badge agent-${node.agent}`
+      : "window-badge";
+    badge.textContent = label
+      ? { running: "◌", completed: "●", none: "○", unknown: "?" }[node.agent] ||
+        "■"
+      : "●";
+    const windowLabel = node.current
+      ? "Проект в этом окне"
+      : "Нажмите, чтобы перейти в открытое окно проекта";
+    badge.title = label
+      ? `${windowLabel}. IVOL Code Agent 5: ${label}.`
+      : windowLabel;
+    badge.setAttribute("role", "img");
+    badge.setAttribute("aria-label", badge.title);
+    heading.append(badge);
   }
   const date = document.createElement("span");
   date.className = "date";
