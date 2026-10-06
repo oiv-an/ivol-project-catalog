@@ -34,13 +34,13 @@ Open VSX: передайте сохранённый токен через OVSX_P
 
 ## Локальная сборка
 
-Требуются Node.js/npm, интернет для загрузки упаковщика. Команда package использует Node.js 22 через npx и сначала проверяет синтаксис.
+Для полного пакета требуются macOS с Apple Command Line Tools (Swift), Node.js/npm и интернет для загрузки упаковщика. Перед упаковкой автоматически собирается универсальное приложение macOS (Apple Silicon и Intel). Команда package использует Node.js 22 через npx и сначала проверяет синтаксис.
 
 ```sh
 npm run package
 ```
 
-Результат: ivol-project-catalog-<version>.vsix. Старые пакеты сохраняются локально и не входят в Git. В VSIX включены только manifest, README, LICENSE, CHANGELOG, src и media.
+Результат: ivol-project-catalog-<version>.vsix. Старые пакеты сохраняются локально и не входят в Git. В VSIX включены manifest, README, LICENSE, CHANGELOG, src, media и скомпилированный помощник native/macos/bin. Исходник помощника и скрипт сборки хранятся в репозитории; пользователю компилятор не нужен.
 
 ## Автоматический релиз
 

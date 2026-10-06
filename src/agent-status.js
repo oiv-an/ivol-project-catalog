@@ -8,14 +8,14 @@ const POLL_INTERVAL = 60000;
 // интерфейса не угадываем состояние и не читаем историю, настройки или ключи.
 class AgentStatus {
   constructor() {
-    this.nextPoll = 0;
+    this.updatedAt = 0;
     this.value = null;
   }
 
-  poll() {
+  poll(interval = POLL_INTERVAL) {
     const now = Date.now();
-    if (now < this.nextPoll) return;
-    this.nextPoll = now + POLL_INTERVAL;
+    if (now - this.updatedAt < interval) return;
+    this.updatedAt = now;
     this.value = this.read();
   }
 

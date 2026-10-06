@@ -15,6 +15,7 @@ const { CatalogPanel } = require("./panel");
 const { WindowStore } = require("./windows");
 const { AgentStatus } = require("./agent-status");
 const { installIndex } = require("./catalog-index");
+const { DesktopBridge } = require("./desktop");
 
 const ROOTS_KEY = "catalog.roots";
 const WINDOW_KEY = "catalog.newWindow";
@@ -278,6 +279,13 @@ async function activate(context) {
   );
   context.subscriptions.push(windows);
   const agent = new AgentStatus();
+  const desktop = new DesktopBridge(context, windows.directory, (error) => {
+    output.appendLine(error.message);
+    void vscode.window.showWarningMessage(error.message);
+  });
+  context.subscriptions.push(desktop);
+  await desktop.load().catch((error) => desktop.fail(error));
+  provider.desktop = desktop;
   let selectedProject;
   let lastWorkspace;
   const canonicalPath = (file) => {
@@ -288,7 +296,7 @@ async function activate(context) {
     }
   };
   const windowState = () => {
-    agent.poll();
+    agent.poll(desktop.enabled ? 2000 : 60000);
     const agentState = agent.value ? { ...agent.value } : null;
     if (agentState?.folder) {
       const folder = canonicalPath(agentState.folder);
@@ -300,19 +308,41 @@ async function activate(context) {
     );
     const workspace = vscode.workspace.workspaceFile;
     const target = workspace || folders[0]?.uri;
+    const openFolders = [
+      ...new Set(
+        folders.flatMap((folder) => {
+          const canonical = canonicalPath(folder.uri.fsPath);
+          const project = closestProject(provider.nodes, canonical);
+          return project ? [canonical, project.folder] : [canonical];
+        }),
+      ),
+    ];
     return {
       target: target?.toString() || "",
       agent: agentState,
-      folders: [
-        ...new Set(
-          folders.flatMap((folder) => {
-            const canonical = canonicalPath(folder.uri.fsPath);
-            const project = closestProject(provider.nodes, canonical);
-            return project ? [canonical, project.folder] : [canonical];
-          }),
-        ),
-      ],
+      folders: openFolders,
+      desktop: {
+        protocol: 1,
+        menuBar: desktop.enabled,
+        labelLength: desktop.labelLength,
+        focused: vscode.window.state.focused,
+        agentTime: agent.updatedAt,
+        projects:
+          process.platform === "darwin"
+            ? projectsIn(provider.nodes)
+                .filter((node) => openFolders.includes(node.folder))
+                .map((node) => ({
+                  folder: node.folder,
+                  name: provider.name(node),
+                }))
+            : [],
+      },
     };
+  };
+  provider.updateDesktop = async (patch) => {
+    await desktop.update(patch);
+    await windows.sync(windowState());
+    await desktop.sync();
   };
   provider.windowStatus = (folder) => {
     if (provider.ownOpenFolders?.has(folder)) return "current";
@@ -549,7 +579,9 @@ async function activate(context) {
     try {
       const indexChanged = await provider.syncIndex();
       const activityChanged = await activity.sync();
+      await desktop.load();
       const windowsChanged = await windows.sync(windowState());
+      await desktop.sync();
       if (indexChanged || activityChanged || windowsChanged) redraw();
     } catch (error) {
       report(error);
@@ -1228,6 +1260,11 @@ async function activate(context) {
   });
 
   register("ivolCatalog.settings", () => openSettings(context, provider));
+  register("ivolCatalog.toggleMenuBar", async () => {
+    if (process.platform !== "darwin") return;
+    await desktop.load();
+    await provider.updateDesktop({ enabled: !desktop.enabled });
+  });
   register("ivolCatalog.refresh", () => provider.refresh(true));
   register("ivolCatalog.toggleNewWindow", async () => {
     await context.globalState.update(WINDOW_KEY, !newWindow());

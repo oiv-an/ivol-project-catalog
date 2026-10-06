@@ -13,3 +13,4 @@ AI_INSTRUCTIONS.md
 *.pfx
 *.log
 artifacts/
+native/macos/bin/

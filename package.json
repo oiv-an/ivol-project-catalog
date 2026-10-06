@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.6.23",
+  "version": "0.7.7",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -39,7 +39,9 @@
     "onView:ivolCatalog.panel"
   ],
   "scripts": {
-    "check": "node --check src/extension.js && node --check src/catalog-index.js && node --check src/index-store.js && node --check src/scanner.js && node --check src/activity.js && node --check src/windows.js && node --check src/agent-status.js && node --check src/settings.js && node --check src/panel.js && node --check media/catalog.js",
+    "check": "node --check src/extension.js && node --check src/catalog-index.js && node --check src/index-store.js && node --check src/scanner.js && node --check src/activity.js && node --check src/windows.js && node --check src/agent-status.js && node --check src/desktop.js && node --check src/settings.js && node --check src/panel.js && node --check media/catalog.js && node --check scripts/build-macos.mjs",
+    "build:macos": "node scripts/build-macos.mjs",
+    "vscode:prepublish": "npm run build:macos",
     "package": "npm run check && npx --yes --package=node@22 --package=@vscode/vsce -- vsce package"
   },
   "contributes": {
@@ -100,6 +102,12 @@
         "command": "ivolCatalog.openFolder",
         "title": "Открыть проект",
         "category": "Проекты"
+      },
+      {
+        "command": "ivolCatalog.toggleMenuBar",
+        "title": "Включить / выключить строку меню macOS",
+        "category": "Проекты",
+        "icon": "$(layout-menubar)"
       },
       {
         "command": "ivolCatalog.settings",
@@ -241,6 +249,22 @@
     "configuration": {
       "title": "Каталог проектов",
       "properties": {
+        "ivolCatalog.desktop.menuBar": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Старое значение для однократного переноса в хранилище Cataloger.",
+          "deprecationMessage": "Управляйте строкой меню через Проекты → ⚙. С версии 0.7.3 режим хранится отдельно от настроек VS Code."
+        },
+        "ivolCatalog.desktop.labelLength": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 2,
+          "maximum": 12,
+          "scope": "application",
+          "description": "Старая длина подписи для однократного переноса в хранилище Cataloger.",
+          "deprecationMessage": "Изменяйте длину подписи через Проекты → ⚙. С версии 0.7.3 значение хранится отдельно от настроек VS Code."
+        },
         "ivolCatalog.folderPreferences": {
           "type": "object",
           "default": {},
