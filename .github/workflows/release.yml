@@ -43,41 +43,5 @@ jobs:
         with:
           name: extension
           path: "*.vsix"
-  marketplace:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: actions/download-artifact@v4
-        with:
-          name: extension
-      - name: Publish VS Code Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          if [ -z "$VSCE_PAT" ]; then
-            echo '::error::Add repository secret VSCE_PAT for publisher ivol, then rerun this job.'
-            exit 1
-          fi
-          npx --yes @vscode/vsce@4.0.0 publish --packagePath ./*.vsix --skip-duplicate
-  open-vsx:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: actions/download-artifact@v4
-        with:
-          name: extension
-      - name: Publish Open VSX
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: |
-          if [ -z "$OVSX_PAT" ]; then
-            echo '::error::Add repository secret OVSX_PAT with access to namespace ivol, then rerun this job.'
-            exit 1
-          fi
-          npx --yes ovsx@1.2.0 publish ./*.vsix --skip-duplicate
+  # Marketplace и Open VSX публикуются локально, только по запросу пользователя.
+  # Не дублируем загрузку в магазины и не требуем их токены в GitHub Secrets.
