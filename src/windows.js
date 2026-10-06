@@ -52,7 +52,9 @@ class WindowStore {
                 "running",
                 "waiting",
                 "stopped",
+                "completed",
                 "idle",
+                "none",
                 "inactive",
                 "unknown",
               ].includes(data.agent.status)

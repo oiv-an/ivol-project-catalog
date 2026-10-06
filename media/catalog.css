@@ -251,6 +251,9 @@ h2 {
   color: var(--vscode-testing-iconPassed, #388a34);
   animation: agent-spin 1.5s linear infinite;
 }
+.agent-completed {
+  color: var(--vscode-testing-iconPassed, #388a34);
+}
 .agent-waiting,
 .agent-unknown {
   color: var(--vscode-editorWarning-foreground, #cca700);

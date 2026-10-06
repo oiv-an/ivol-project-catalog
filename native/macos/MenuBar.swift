@@ -106,7 +106,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
             labelLength = min(12, max(2, configuration.labelLength))
         }
         let now = Date().timeIntervalSince1970 * 1000
-        let rank = ["running": 6, "waiting": 5, "unknown": 4, "stopped": 3, "idle": 2, "inactive": 1, "": 0]
+        let rank = ["running": 8, "waiting": 7, "unknown": 6, "stopped": 5, "completed": 4, "idle": 3, "none": 2, "inactive": 1, "": 0]
         var grouped: [String: Item] = [:]
         // Все окна нового протокола, не только инициатор запуска помощника.
         for window in windows.sorted(by: { $0.id < $1.id }) {
@@ -114,7 +114,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
             for project in desktop.projects where project.folder.hasPrefix("/") {
                 var status = window.agent?.status ?? ""
                 if let agentFolder = window.agent?.folder, !agentFolder.isEmpty, agentFolder != project.folder {
-                    status = "idle"
+                    status = "none"
                 }
                 if !status.isEmpty && (now - desktop.agentTime > 10000 || now - desktop.agentTime < 0) {
                     status = "unknown"
@@ -179,7 +179,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
         case "running": return ("↻", .systemGreen, "Агент работает")
         case "waiting": return ("◷", .systemOrange, "Агент ждёт ответа")
         case "stopped": return ("Ⅱ", .secondaryLabelColor, "Агент остановлен")
-        case "idle": return ("●", .systemGreen, "Проект доступен · агент без задачи")
+        case "completed": return ("●", .systemGreen, "Выбранная задача завершена")
+        case "idle": return ("·", .secondaryLabelColor, "Задача открыта · агент не работает, завершение не подтверждено")
+        case "none": return ("○", .secondaryLabelColor, "Задача не выбрана")
         case "inactive": return ("○", .secondaryLabelColor, "Агент не активирован")
         case "unknown": return ("?", .systemOrange, "Статус агента недоступен или устарел")
         default: return ("·", .secondaryLabelColor, "Агент не установлен")
@@ -248,8 +250,10 @@ final class MenuController: NSObject, NSApplicationDelegate {
         let frame = animationFrame
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { _ in
-            let color: NSColor = (status == "running" || status == "idle") ? .systemGreen
-                : (status == "waiting" || status == "unknown" ? .systemOrange : .labelColor)
+            let color: NSColor = (status == "running" || status == "completed") ? .systemGreen
+                : (status == "waiting" || status == "unknown" ? .systemOrange
+                    : (status == "none" || status == "inactive" ? NSColor(calibratedWhite: 0.7, alpha: 1)
+                        : (status == "idle" ? .secondaryLabelColor : .labelColor)))
             color.setStroke()
             color.setFill()
             if status == "running" {
@@ -274,9 +278,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
                 NSBezierPath(roundedRect: NSRect(x: 7, y: 2, width: 2, height: 8), xRadius: 0.5, yRadius: 0.5).fill()
             } else if status == "unknown" {
                 ("?" as NSString).draw(at: NSPoint(x: 2.5, y: -1), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: color])
-            } else if status == "inactive" {
-                let circle = NSBezierPath(ovalIn: NSRect(x: 3, y: 3, width: 6, height: 6)); circle.lineWidth = 1.2; circle.stroke()
-            } else if status == "idle" {
+            } else if status == "inactive" || status == "none" {
+                let circle = NSBezierPath(ovalIn: NSRect(x: 1.5, y: 1.5, width: 9, height: 9)); circle.lineWidth = 1.6; circle.stroke()
+            } else if status == "completed" {
                 NSBezierPath(ovalIn: NSRect(x: 1.5, y: 1.5, width: 9, height: 9)).fill()
             } else {
                 NSBezierPath(ovalIn: NSRect(x: 4, y: 4, width: 4, height: 4)).fill()

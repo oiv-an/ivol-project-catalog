@@ -359,13 +359,22 @@ async function activate(context) {
         const state = entry.agent;
         if (!state) return null;
         // В multi-root активная задача относится только к своему проекту.
-        if (state.folder && state.folder !== folder) return "idle";
+        if (state.folder && state.folder !== folder) return "none";
         return state.status;
       })
       .filter(Boolean);
     // Один проект может быть открыт в нескольких окнах: работа важнее простоя.
     return (
-      ["running", "waiting", "unknown", "stopped", "idle", "inactive"].find(
+      [
+        "running",
+        "waiting",
+        "unknown",
+        "stopped",
+        "completed",
+        "idle",
+        "none",
+        "inactive",
+      ].find(
         (status) => states.includes(status),
       ) || ""
     );

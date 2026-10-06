@@ -201,7 +201,9 @@ function row(node, depth, recent) {
       running: "Агент выполняет задачу",
       waiting: "Агент ждёт ответа или подтверждения",
       stopped: "Агент остановлен / ожидает возобновления",
-      idle: "Агент не выполняет задачу",
+      completed: "Выбранная задача завершена",
+      idle: "Задача открыта, агент не работает; завершение не подтверждено",
+      none: "Задача не выбрана",
       inactive: "Расширение агента не активировано",
       unknown: "Статус агента недоступен",
     };
@@ -210,7 +212,7 @@ function row(node, depth, recent) {
       const badge = document.createElement("span");
       badge.className = `agent-badge agent-${node.agent}`;
       badge.textContent =
-        node.agent === "running" ? "◌" : node.agent === "unknown" ? "?" : "■";
+        { running: "◌", completed: "●", none: "○", unknown: "?" }[node.agent] || "■";
       badge.title = `IVOL Code Agent 5: ${label}. Обновление раз в минуту.`;
       badge.setAttribute("role", "img");
       badge.setAttribute("aria-label", badge.title);
