@@ -179,7 +179,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
         case "running": return ("↻", .systemGreen, "Агент работает")
         case "waiting": return ("◷", .systemOrange, "Агент ждёт ответа")
         case "stopped": return ("Ⅱ", .secondaryLabelColor, "Агент остановлен")
-        case "idle": return ("·", .secondaryLabelColor, "Агент без задачи")
+        case "idle": return ("●", .systemGreen, "Проект доступен · агент без задачи")
         case "inactive": return ("○", .secondaryLabelColor, "Агент не активирован")
         case "unknown": return ("?", .systemOrange, "Статус агента недоступен или устарел")
         default: return ("·", .secondaryLabelColor, "Агент не установлен")
@@ -248,7 +248,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
         let frame = animationFrame
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { _ in
-            let color: NSColor = status == "running" ? .systemGreen
+            let color: NSColor = (status == "running" || status == "idle") ? .systemGreen
                 : (status == "waiting" || status == "unknown" ? .systemOrange : .labelColor)
             color.setStroke()
             color.setFill()
@@ -276,6 +276,8 @@ final class MenuController: NSObject, NSApplicationDelegate {
                 ("?" as NSString).draw(at: NSPoint(x: 2.5, y: -1), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: color])
             } else if status == "inactive" {
                 let circle = NSBezierPath(ovalIn: NSRect(x: 3, y: 3, width: 6, height: 6)); circle.lineWidth = 1.2; circle.stroke()
+            } else if status == "idle" {
+                NSBezierPath(ovalIn: NSRect(x: 1.5, y: 1.5, width: 9, height: 9)).fill()
             } else {
                 NSBezierPath(ovalIn: NSRect(x: 4, y: 4, width: 4, height: 4)).fill()
             }
