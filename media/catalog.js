@@ -258,14 +258,14 @@ function row(node, depth, recent) {
     control.onclick = () => api.postMessage({ type, id: node.id });
     line.append(control);
   };
-  if (!recent && depth > 0 && !node.project && node.count === 0)
+  if (!recent && node.canMarkProject)
     action(
       "markProject",
       "◎",
-      "Считать эту папку проектом — без создания новой",
+      "Сделать эту папку единым проектом",
     );
   if (!recent)
-    action("folderMenu", "＋", "Создать папку или добавить пропущенные");
+    action("folderMenu", "＋", "Действия с папкой: создать, назначить проектом, добавить пропущенные");
   action("rename", "✎", "Изменить название в каталоге");
   action("hide", "⊘", "Скрыть папку (вернуть можно в настройках)");
   container.append(line);

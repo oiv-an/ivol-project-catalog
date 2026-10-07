@@ -245,7 +245,11 @@ async function scanRoots(roots, options = {}) {
       children: [],
     };
     if (project) found.set(folder, node);
-    if (project && !pinnedParents.has(folder)) return node;
+    // Явный проект целиком принадлежит выбранной папке, даже если внутри
+    // остались закреплённые/ранее назначенные проекты. Их настройки сохраняем
+    // для возврата автоопределения, но не включаем в дерево этого проекта.
+    if (project && (explicitProjects.has(folder) || !pinnedParents.has(folder)))
+      return node;
     // Внутри проектов ищем только явно созданные папки и пути к ним, не модули.
     if (visited > maxEntries) limited = true;
     for (const entry of entries.sort((a, b) =>

@@ -50,9 +50,17 @@ function installIndex(provider, context, vscode) {
           n.id = parent
             ? `${parent}/${path.basename(n.folder)}`
             : JSON.stringify([n.folder]);
-          n.children = visit(n.children, n.id);
-          if (!n.project)
-            n.modified = Math.max(0, ...n.children.map((c) => c.modified || 0));
+          if (!n.root && data.preferences[n.folder]?.project) {
+            // Явное назначение задаёт границу проекта для всех операций индекса.
+            n.project = true;
+            n.placeholder = false;
+            n.modified = Math.max(n.modified || 0, ...n.children.map((c) => c.modified || 0));
+            n.children = [];
+          } else {
+            n.children = visit(n.children, n.id);
+            if (!n.project)
+              n.modified = Math.max(0, ...n.children.map((c) => c.modified || 0));
+          }
           return n;
         });
     data.nodes = visit(data.nodes.filter((n) => data.roots.includes(n.folder)));

@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.7.16",
+  "version": "0.7.18",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -129,7 +129,7 @@
       },
       {
         "command": "ivolCatalog.markProject",
-        "title": "Считать эту папку проектом",
+        "title": "Сделать проектом…",
         "category": "Проекты"
       },
       {
@@ -191,7 +191,7 @@
       "webview/context": [
         {
           "command": "ivolCatalog.newProjectHere",
-          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder'",
+          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder' && !ivolExplicitProject",
           "group": "1_create"
         },
         {

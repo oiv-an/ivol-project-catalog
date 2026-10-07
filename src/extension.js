@@ -317,6 +317,21 @@ async function activate(context) {
         }),
       ),
     ];
+    // Открытое окно не должно исчезать из строки из-за автоопределения:
+    // например, Swift-проект мог распознаться только во вложенной Sources.
+    const desktopProjects = new Map();
+    if (process.platform === "darwin") {
+      const hidden = Object.entries(provider.preferences)
+        .filter(([, value]) => value.hidden)
+        .map(([folder]) => folder);
+      for (const workspaceFolder of folders) {
+        const canonical = canonicalPath(workspaceFolder.uri.fsPath);
+        if (hidden.some((folder) =>
+          canonical === folder || canonical.startsWith(folder + path.sep))) continue;
+        const folder = closestProject(provider.nodes, canonical)?.folder || canonical;
+        desktopProjects.set(folder, { folder, name: provider.name({ folder }) });
+      }
+    }
     return {
       target: target?.toString() || "",
       agent: agentState,
@@ -347,15 +362,7 @@ async function activate(context) {
                 })(),
               }
             : undefined,
-        projects:
-          process.platform === "darwin"
-            ? projectsIn(provider.nodes)
-                .filter((node) => openFolders.includes(node.folder))
-                .map((node) => ({
-                  folder: node.folder,
-                  name: provider.name(node),
-                }))
-            : [],
+        projects: [...desktopProjects.values()],
       },
     };
   };
@@ -951,6 +958,11 @@ async function activate(context) {
     const actual = await fs.realpath(parent);
     if (actual !== parent || !(await fs.stat(parent)).isDirectory())
       throw new Error("Папка-родитель недоступна или является ссылкой.");
+    if (options.project && Object.entries(provider.preferences).some(
+      ([folder, value]) => value.project &&
+        (parent === folder || parent.startsWith(folder + path.sep)),
+    ))
+      throw new Error("Внутри явно назначенного проекта создаются обычные папки. Новый проект создайте рядом или верните автоопределение родителя.");
     const name =
       options.name ??
       (await vscode.window.showInputBox({
@@ -1140,8 +1152,28 @@ async function activate(context) {
     return folder;
   };
   const setProjectMode = async (input, explicit) => {
+    await provider.syncIndex();
     const node = findNode(input?.folder);
     if (!node || node.root || provider.roots.includes(node.folder)) return;
+    if (explicit) {
+      const choice = await vscode.window.showInformationMessage(
+        "Сделать её проектом?",
+        {
+          modal: true,
+          detail: `${provider.name(node)}
+${node.folder}
+
+Эта папка станет единым проектом. Все вложенные проекты перестанут отображаться отдельно и будут его содержимым. Файлы и папки на диске не изменятся. Вернуть автоматическое определение можно через «Вернуть автоопределение».`,
+        },
+        "Да",
+      );
+      if (choice !== "Да") return;
+      await provider.syncIndex();
+      if (!findNode(node.folder) || provider.roots.includes(node.folder))
+        throw new Error("Папка изменилась в каталоге. Выберите её заново.");
+      if (provider.roots.some((root) => root.startsWith(node.folder + path.sep)))
+        throw new Error("Внутри отдельно подключён корень каталога. Сначала отключите его, затем назначьте родительскую папку проектом.");
+    }
     const info = await fs.lstat(node.folder);
     if (
       !info.isDirectory() ||
@@ -1189,6 +1221,12 @@ async function activate(context) {
     const choices = [
       { label: "$(new-folder) Создать новую папку", value: "create" },
     ];
+    if (!provider.preferences[node.folder]?.project)
+      choices.push({
+        label: "$(circle-outline) Сделать проектом…",
+        value: "project",
+        description: "Одна папка — один проект, без вложенных проектов",
+      });
     if (!node.project)
       choices.push({
         label: "$(refresh) Добавить пропущенные папки",
@@ -1198,6 +1236,7 @@ async function activate(context) {
     const choice = await vscode.window.showQuickPick(choices, {
       title: `Папка: ${provider.name(node)}`,
     });
+    if (choice?.value === "project") await setProjectMode(node, true);
     if (choice?.value === "create") await createFolder(node.folder);
     if (choice?.value === "include")
       await vscode.commands.executeCommand("ivolCatalog.includeFolders", node);

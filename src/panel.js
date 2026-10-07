@@ -173,6 +173,9 @@ class CatalogPanel {
         placeholder: !!node.placeholder,
         relaxed: !!this.model.preferences[node.folder]?.relaxed,
         explicitProject: !!this.model.preferences[node.folder]?.project,
+        canMarkProject:
+          !node.root && !this.model.roots.includes(node.folder) &&
+          !this.model.preferences[node.folder]?.project,
         folder: node.folder,
         project: !!node.project,
         favorite: favorites.has(node.folder),
