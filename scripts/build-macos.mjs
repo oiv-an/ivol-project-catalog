@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 if (process.platform !== "darwin") {
@@ -6,6 +6,9 @@ if (process.platform !== "darwin") {
     "Пакет с помощником macOS нужно собирать на macOS (Apple Command Line Tools). Проверка JavaScript доступна на любой ОС.",
   );
 }
+const { version } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
 const output = "native/macos/bin/IVOLCatalogMenu.app/Contents";
 const temporary = "artifacts/macos";
 mkdirSync(`${output}/MacOS`, { recursive: true });
@@ -48,8 +51,8 @@ writeFileSync(
 <key>CFBundleName</key><string>IVOL Cataloger</string>
 <key>CFBundleExecutable</key><string>IVOLCatalogMenu</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleVersion</key><string>${version}</string>
+<key>CFBundleShortVersionString</key><string>${version}</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>

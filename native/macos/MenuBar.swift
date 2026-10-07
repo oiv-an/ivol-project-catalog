@@ -46,6 +46,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
     var lastOpen = Date.distantPast
     var launching = false
     var emptyTicks = 0
+    // Только последнее действие: диагностика не накапливает историю кликов.
+    var lastClick: [String: Any] = [:]
+    var lastSwitch: [String: Any] = [:]
     let manager = FileManager.default
 
     init(storage: URL, cli: String, lockFD: Int32, standalone: Bool) {
@@ -135,9 +138,13 @@ final class MenuController: NSObject, NSApplicationDelegate {
             return order == .orderedSame ? $0.folder < $1.folder : order == .orderedAscending
         }
         render()
+        writeHeartbeat()
+    }
+
+    func writeHeartbeat() {
         let buttonWindow = strip?.button?.window
         let heartbeat: [String: Any] = [
-            "protocol": 1, "pid": getpid(), "time": now,
+            "protocol": 1, "pid": getpid(), "time": Date().timeIntervalSince1970 * 1000,
             "standalone": standalone, "connectedWindows": connectedWindows,
             "projects": items.count, "statusItemVisible": strip?.isVisible ?? false,
             "buttonWindowVisible": buttonWindow?.isVisible ?? false,
@@ -145,7 +152,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
             "buttonTitles": strip.map { [$0.button?.attributedTitle.string ?? ""] } ?? [],
             "statusItemCount": strip == nil ? 0 : 1,
             "buttonFrame": buttonWindow.map { NSStringFromRect($0.frame) } ?? "",
-            "screen": buttonWindow?.screen?.localizedName ?? ""
+            "screen": buttonWindow?.screen?.localizedName ?? "",
+            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+            "launching": launching, "lastClick": lastClick, "lastSwitch": lastSwitch
         ]
         if let data = try? JSONSerialization.data(withJSONObject: heartbeat) {
             try? data.write(to: storage.appendingPathComponent(".menubar-heartbeat.json"), options: .atomic)
@@ -351,24 +360,57 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     @objc func projectClicked(_ sender: NSStatusBarButton) {
-        guard let event = NSApp.currentEvent else { return }
+        lastClick = ["time": Date().timeIntervalSince1970 * 1000, "source": "strip"]
+        defer { writeHeartbeat() }
+        guard let event = NSApp.currentEvent else { lastClick["result"] = "no-event"; return }
+        lastClick["eventType"] = event.type.rawValue
         // Command используется самой системой для перестановки, не открываем проект.
-        if event.modifierFlags.contains(.command) { return }
+        if event.modifierFlags.contains(.command) { lastClick["result"] = "command-drag"; return }
         if event.type == .rightMouseUp {
+            lastClick["result"] = "menu"
             menuForProjects().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
             return
         }
-        let point = sender.convert(event.locationInWindow, from: nil)
+        let eventPoint = sender.convert(event.locationInWindow, from: nil)
+        guard let buttonWindow = sender.window else { lastClick["result"] = "no-window"; return }
+        // Системная строка может передать синтетическое событие с центром кнопки.
+        // Для выбора сегмента используем текущий курсор в координатах экрана AppKit.
+        let screenPoint = NSEvent.mouseLocation
+        let point = sender.convert(buttonWindow.convertPoint(fromScreen: screenPoint), from: nil)
+        lastClick["eventPointX"] = Double(eventPoint.x)
+        lastClick["eventPointY"] = Double(eventPoint.y)
+        lastClick["screenPoint"] = NSStringFromPoint(screenPoint)
+        lastClick["coordinateSource"] = "screen-cursor"
+        guard sender.bounds.contains(point) else {
+            lastClick["result"] = "cursor-outside-show-menu"
+            menuForProjects().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
+            return
+        }
         let titleRect = sender.cell?.titleRect(forBounds: sender.bounds) ?? sender.bounds
         let start = titleRect.midX - sender.attributedTitle.size().width / 2
         let x = point.x - start
-        guard let segment = segments.first(where: { x >= $0.start && x < $0.end }) else { return }
+        lastClick["pointX"] = Double(point.x)
+        lastClick["pointY"] = Double(point.y)
+        lastClick["bounds"] = NSStringFromRect(sender.bounds)
+        lastClick["titleRect"] = NSStringFromRect(titleRect)
+        lastClick["titleWidth"] = Double(sender.attributedTitle.size().width)
+        lastClick["textX"] = Double(x)
+        lastClick["segments"] = segments.map { ["folder": $0.folder ?? "", "start": Double($0.start), "end": Double($0.end)] as [String: Any] }
+        guard let segment = segments.first(where: { x >= $0.start && x < $0.end }) else {
+            lastClick["result"] = "miss-show-menu"
+            menuForProjects().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
+            return
+        }
+        lastClick["result"] = segment.folder == nil ? "overflow" : "project"
+        lastClick["folder"] = segment.folder ?? ""
         if let folder = segment.folder { openProject(folder) }
         else { menuForProjects().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender) }
     }
 
     @objc func menuClicked(_ sender: NSMenuItem) {
+        lastClick = ["time": Date().timeIntervalSince1970 * 1000, "source": "menu", "folder": sender.representedObject as? String ?? ""]
         if let folder = sender.representedObject as? String { openProject(folder) }
+        writeHeartbeat()
     }
 
     func notify(_ text: String) {
@@ -381,14 +423,23 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     func openProject(_ folder: String) {
-        guard !launching, Date().timeIntervalSince(lastOpen) > 0.7 else { return }
+        guard !launching else { lastClick["ignored"] = "busy"; return }
+        guard Date().timeIntervalSince(lastOpen) > 0.7 else { lastClick["ignored"] = "throttled"; return }
+        let requestID = UUID().uuidString
+        lastSwitch = ["id": requestID, "time": Date().timeIntervalSince1970 * 1000, "folder": folder, "stage": "resolve-window"]
+        defer { writeHeartbeat() }
         // Проверяем живое окно повторно: клик не должен открывать уже закрытый проект.
         let windows = readWindows()
         guard let window = windows.sorted(by: { ($0.desktop?.focused == true ? 1 : 0) > ($1.desktop?.focused == true ? 1 : 0) })
             .first(where: { $0.desktop?.projects.contains(where: { $0.folder == folder }) == true }) else {
+            lastSwitch["stage"] = "window-not-found"
             tick()
             return
         }
+        lastSwitch["windowID"] = window.id
+        lastSwitch["windowPID"] = window.pid
+        lastSwitch["target"] = window.target
+        lastSwitch["stage"] = "validate-target"
         guard let target = URL(string: window.target), target.isFileURL else {
             notify("Сначала сохраните рабочую область в VS Code. Переключение на несохранённую рабочую область не поддерживается.")
             return
@@ -397,31 +448,80 @@ final class MenuController: NSObject, NSApplicationDelegate {
             notify("Папка или файл рабочей области больше не существует.")
             return
         }
+        lastSwitch["stage"] = "resolve-editor"
+        var editorURL = URL(fileURLWithPath: cli).resolvingSymlinksInPath()
+        while editorURL.path != "/" && editorURL.pathExtension.lowercased() != "app" {
+            editorURL.deleteLastPathComponent()
+        }
+        guard let executable = Bundle(url: editorURL)?.executableURL,
+              manager.isExecutableFile(atPath: executable.path) else {
+            notify("Не удалось найти приложение VS Code для переключения окна.")
+            return
+        }
+        guard let editor = NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && $0.bundleURL?.resolvingSymlinksInPath().path == editorURL.path
+        }) else {
+            tick()
+            notify("Приложение VS Code уже закрыто.")
+            return
+        }
+        lastSwitch["editorPID"] = editor.processIdentifier
+        lastSwitch["executable"] = executable.path
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: cli)
-        // VS Code ищет точное совпадение открытой папки/workspace до создания окна.
+        // Прямой executable передаёт запрос существующему VS Code через single-instance IPC.
+        // Оболочка code на macOS запускает open -n -g и завершается раньше обработки запроса.
+        process.executableURL = executable
+        // VS Code находит открытую папку/workspace и сам восстанавливает свёрнутое окно.
         // new-window защищает другое активное окно при гонке закрытия целевого.
         process.arguments = ["--new-window", target.path]
         var environment = ProcessInfo.processInfo.environment
         environment.removeValue(forKey: "VSCODE_IPC_HOOK_CLI")
         environment.removeValue(forKey: "ELECTRON_RUN_AS_NODE")
         process.environment = environment
+        process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
-                self?.launching = false
+                guard let self = self else { return }
+                self.launching = false
+                self.lastSwitch["stage"] = "process-exited"
+                self.lastSwitch["exitCode"] = process.terminationStatus
+                self.lastSwitch["exitTime"] = Date().timeIntervalSince1970 * 1000
                 if process.terminationStatus != 0 {
-                    self?.notify("Не удалось переключить окно VS Code (код \(process.terminationStatus)).")
+                    self.writeHeartbeat()
+                    self.notify("Не удалось переключить окно VS Code (код \(process.terminationStatus)).")
+                } else if !editor.isTerminated {
+                    // Результат активации приложения ещё не доказывает фокус выбранного окна.
+                    self.lastSwitch["unhideAccepted"] = editor.unhide()
+                    self.lastSwitch["activationAccepted"] = editor.activate(options: [.activateIgnoringOtherApps])
+                    self.lastSwitch["stage"] = "activation-requested"
+                }
+                self.writeHeartbeat()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    guard let self = self, self.lastSwitch["id"] as? String == requestID else { return }
+                    let current = self.readWindows()
+                    let selected = current.first(where: { $0.id == window.id })
+                    self.lastSwitch["windowStillRegistered"] = selected != nil
+                    self.lastSwitch["selectedWindowFocused"] = selected?.desktop?.focused ?? false
+                    self.lastSwitch["editorActive"] = editor.isActive
+                    self.lastSwitch["editorHidden"] = editor.isHidden
+                    self.lastSwitch["checkedAt"] = Date().timeIntervalSince1970 * 1000
+                    self.writeHeartbeat()
                 }
             }
         }
         do {
             launching = true
             lastOpen = Date()
+            lastSwitch["stage"] = "starting-process"
             try process.run()
+            lastSwitch["stage"] = "process-running"
+            lastSwitch["processPID"] = process.processIdentifier
         } catch {
             launching = false
+            lastSwitch["stage"] = "start-error"
+            lastSwitch["error"] = error.localizedDescription
             notify("Не удалось запустить VS Code: \(error.localizedDescription)")
         }
     }
