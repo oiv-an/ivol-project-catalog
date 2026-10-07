@@ -4,6 +4,9 @@ import Darwin
 
 struct Agent: Decodable { let status: String; let folder: String? }
 struct Project: Decodable { let folder: String; let name: String }
+struct CatalogGroup: Decodable { let folder: String; let name: String; let children: [CatalogGroup] }
+struct Creation: Decodable { let `protocol`: Int; let groups: [CatalogGroup] }
+struct CreationResult: Decodable { let id: String; let folder: String?; let error: String? }
 struct Desktop: Decodable {
     let `protocol`: Int
     let menuBar: Bool
@@ -11,6 +14,7 @@ struct Desktop: Decodable {
     let focused: Bool
     let agentTime: Double
     let projects: [Project]
+    let creation: Creation?
 }
 struct Control: Decodable { let enabled: Bool; let time: Double; let labelLength: Int? }
 struct WindowEntry: Decodable {
@@ -42,6 +46,15 @@ final class MenuController: NSObject, NSApplicationDelegate {
     var items: [Item] = []
     var strip: NSStatusItem?
     var segments: [(folder: String?, start: CGFloat, end: CGFloat)] = []
+    var creationPopover: NSPopover?
+    var parentButton: NSPopUpButton?
+    var nameField: NSTextField?
+    var creationMessage: NSTextField?
+    var createButton: NSButton?
+    var selectedParent: String?
+    var browseParent = false
+    var creationWindow: WindowEntry?
+    var pendingCreation: (id: String, file: URL, time: Date)?
     var labelLength = 4
     var lastOpen = Date.distantPast
     var launching = false
@@ -137,6 +150,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
             let order = $0.name.localizedStandardCompare($1.name)
             return order == .orderedSame ? $0.folder < $1.folder : order == .orderedAscending
         }
+        pollCreation()
         render()
         writeHeartbeat()
     }
@@ -205,6 +219,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
             : "Приложение работает · ожидание VS Code", action: nil, keyEquivalent: "")
         connection.isEnabled = false
         menu.addItem(connection)
+        let create = NSMenuItem(title: "Новый проект…", action: #selector(showCreation), keyEquivalent: "")
+        create.target = self
+        menu.addItem(create)
         menu.addItem(.separator())
         if items.isEmpty {
             let item = NSMenuItem(title: "Нет открытых проектов каталога", action: nil, keyEquivalent: "")
@@ -317,22 +334,22 @@ final class MenuController: NSObject, NSApplicationDelegate {
 
     func render() {
         // Один штатный элемент: macOS переносит всю полоску через Command-drag.
-        if strip == nil && !items.isEmpty {
+        if strip == nil {
             strip = makeStatusItem(name: "ivol.catalog.project-strip", position: 60)
         }
         guard let strip = strip, let button = strip.button else { return }
-        strip.isVisible = !items.isEmpty
-        guard !items.isEmpty else { segments = []; iconRanges = []; return }
+        strip.isVisible = true
         let labels = shortLabels()
-        let title = NSMutableAttributedString(string: "")
-        segments = []
+        let title = NSMutableAttributedString(string: "＋", attributes: [
+            .font: NSFont.systemFont(ofSize: 15, weight: .medium), .foregroundColor: NSColor.labelColor])
+        segments = [("", 0, title.size().width)]
         iconRanges = []
         // Оставляем место системным значкам; остальные проекты доступны в меню +N.
         let screenWidth = button.window?.screen?.frame.width ?? NSScreen.main?.frame.width ?? 1440
         let limit = max(180, min(1200, screenWidth * 0.55))
         for (index, project) in items.enumerated() {
             let font = NSFont.systemFont(ofSize: 12, weight: project.focused ? .semibold : .regular)
-            let part = NSMutableAttributedString(string: index == 0 ? "" : "  ", attributes: [.font: font])
+            let part = NSMutableAttributedString(string: "  ", attributes: [.font: font])
             let iconOffset = part.length
             part.append(icon(project.status))
             part.append(NSAttributedString(string: " " + (labels[project.folder] ?? project.name),
@@ -351,9 +368,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
         strip.length = ceil(title.size().width) + 12
         button.attributedTitle = title
-        button.toolTip = items.map { "\($0.name) — \(state($0.status).2)\n\($0.folder)" }.joined(separator: "\n\n")
+        button.toolTip = "＋ — Новый проект\n\n" + items.map { "\($0.name) — \(state($0.status).2)\n\($0.folder)" }.joined(separator: "\n\n")
             + "\n\nКлик по названию — перейти; правый клик — все проекты; ⌘ + перетаскивание — вся полоска"
-        button.setAccessibilityLabel(items.map { "\($0.name), \(state($0.status).2)" }.joined(separator: "; "))
+        button.setAccessibilityLabel("Новый проект; " + items.map { "\($0.name), \(state($0.status).2)" }.joined(separator: "; "))
         button.target = self
         button.action = #selector(projectClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -403,8 +420,152 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
         lastClick["result"] = segment.folder == nil ? "overflow" : "project"
         lastClick["folder"] = segment.folder ?? ""
-        if let folder = segment.folder { openProject(folder) }
+        if segment.folder == "" { showCreation() }
+        else if let folder = segment.folder { openProject(folder) }
         else { menuForProjects().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender) }
+    }
+
+    @objc func showCreation() {
+        guard let button = strip?.button else { return }
+        if let popover = creationPopover, popover.isShown { popover.performClose(nil); return }
+        if pendingCreation != nil { return }
+        creationWindow = readWindows().filter { $0.desktop?.creation?.protocol == 1 }
+            .sorted { $0.time > $1.time }.first
+        let controller = NSViewController()
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 246))
+        controller.view = view
+        func label(_ text: String, _ y: CGFloat) -> NSTextField {
+            let field = NSTextField(labelWithString: text)
+            field.frame = NSRect(x: 18, y: y, width: 384, height: 22)
+            view.addSubview(field)
+            return field
+        }
+        let heading = label("Новый проект", 210)
+        heading.font = .boldSystemFont(ofSize: 15)
+        _ = label("Куда", 177)
+        let parent = NSPopUpButton(frame: NSRect(x: 15, y: 145, width: 390, height: 30), pullsDown: false)
+        parent.setAccessibilityLabel("Каталог для нового проекта")
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let placeholder = NSMenuItem(title: "Выберите каталог…", action: nil, keyEquivalent: "")
+        menu.addItem(placeholder)
+        func addGroups(_ groups: [CatalogGroup], to menu: NSMenu) {
+            for group in groups {
+                let item = NSMenuItem(title: group.name, action: #selector(selectCreationParent(_:)), keyEquivalent: "")
+                item.target = self; item.representedObject = group.folder; item.toolTip = group.folder
+                if !group.children.isEmpty {
+                    let submenu = NSMenu(); submenu.autoenablesItems = false
+                    let here = NSMenuItem(title: "Создать здесь: " + group.name, action: #selector(selectCreationParent(_:)), keyEquivalent: "")
+                    here.target = self; here.representedObject = group.folder
+                    submenu.addItem(here); submenu.addItem(.separator())
+                    addGroups(group.children, to: submenu)
+                    item.submenu = submenu
+                }
+                menu.addItem(item)
+            }
+        }
+        addGroups(creationWindow?.desktop?.creation?.groups ?? [], to: menu)
+        menu.addItem(.separator())
+        let browse = NSMenuItem(title: "Другая папка на диске…", action: #selector(browseCreationParent), keyEquivalent: "")
+        browse.target = self; menu.addItem(browse)
+        parent.menu = menu; view.addSubview(parent); parentButton = parent
+        _ = label("Название", 116)
+        let name = NSTextField(frame: NSRect(x: 18, y: 85, width: 384, height: 26))
+        name.placeholderString = "Название проекта (папки)"
+        name.setAccessibilityLabel("Название нового проекта")
+        name.target = self; name.action = #selector(submitCreation)
+        view.addSubview(name); nameField = name
+        let message = NSTextField(wrappingLabelWithString: creationWindow == nil
+            ? "Нет подключённого окна новой версии. Перезапустите окно VS Code." : "Папка откроется в новом окне VS Code.")
+        message.frame = NSRect(x: 18, y: 12, width: 334, height: 62)
+        message.font = .systemFont(ofSize: 11); message.textColor = .secondaryLabelColor
+        view.addSubview(message); creationMessage = message
+        let create = NSButton(title: "", target: self, action: #selector(submitCreation))
+        create.image = NSImage(systemSymbolName: "plus.rectangle.on.folder", accessibilityDescription: "Создать проект и открыть новое окно")
+        create.bezelStyle = .rounded; create.toolTip = "Создать проект и открыть новое окно (Enter)"
+        create.setAccessibilityLabel("Создать проект и открыть новое окно")
+        create.frame = NSRect(x: 357, y: 30, width: 45, height: 32)
+        create.isEnabled = creationWindow != nil
+        view.addSubview(create); createButton = create
+        selectedParent = nil; browseParent = false
+        let popover = NSPopover(); popover.behavior = .transient
+        popover.contentViewController = controller; creationPopover = popover
+        let rect = button.cell?.titleRect(forBounds: button.bounds) ?? button.bounds
+        popover.show(relativeTo: NSRect(x: rect.minX, y: 0, width: 22, height: button.bounds.height), of: button, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
+        popover.contentViewController?.view.window?.makeKey()
+        popover.contentViewController?.view.window?.makeFirstResponder(name)
+    }
+
+    func chooseParent(_ folder: String, browse: Bool) {
+        selectedParent = folder; browseParent = browse
+        // Отдельный первый пункт показывает выбранную подпапку любого уровня.
+        parentButton?.item(at: 0)?.title = URL(fileURLWithPath: folder).lastPathComponent
+        parentButton?.selectItem(at: 0); parentButton?.toolTip = folder
+        creationMessage?.stringValue = folder
+    }
+
+    @objc func selectCreationParent(_ sender: NSMenuItem) {
+        guard let folder = sender.representedObject as? String else { return }
+        chooseParent(folder, browse: false)
+    }
+
+    @objc func browseCreationParent() {
+        creationPopover?.behavior = .applicationDefined
+        let panel = NSOpenPanel()
+        panel.title = "Куда создать новый проект"
+        panel.prompt = "Выбрать"
+        panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            chooseParent(url.resolvingSymlinksInPath().path, browse: true)
+        }
+        creationPopover?.behavior = .transient
+    }
+
+    @objc func submitCreation() {
+        guard pendingCreation == nil else { return }
+        guard let parent = selectedParent else { creationMessage?.stringValue = "Сначала выберите каталог «Куда»."; return }
+        let name = (nameField?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != ".", name != "..", name.utf16.count <= 120,
+              !name.contains("/"), !name.contains("\\"), name.rangeOfCharacter(from: .controlCharacters) == nil else {
+            creationMessage?.stringValue = "Укажите одно имя до 120 символов, без / и \\."; return
+        }
+        guard let window = creationWindow,
+              readWindows().contains(where: { $0.id == window.id && $0.desktop?.creation?.protocol == 1 }) else {
+            creationMessage?.stringValue = "Окно VS Code отключилось. Закройте форму и откройте заново."; return
+        }
+        let id = UUID().uuidString
+        let file = storage.appendingPathComponent(".menubar-create-\(window.id).json")
+        let request: [String: Any] = ["protocol": 1, "id": id, "windowID": window.id,
+            "time": Date().timeIntervalSince1970 * 1000, "parent": parent, "name": name, "browse": browseParent]
+        do {
+            let data = try JSONSerialization.data(withJSONObject: request)
+            try data.write(to: file, options: .atomic)
+            pendingCreation = (id, file, Date())
+            createButton?.isEnabled = false; nameField?.isEnabled = false; parentButton?.isEnabled = false
+            creationPopover?.behavior = .applicationDefined
+            creationMessage?.stringValue = "Создаю проект и открываю новое окно…"
+        } catch { creationMessage?.stringValue = error.localizedDescription }
+    }
+
+    func pollCreation() {
+        guard let pending = pendingCreation else { return }
+        let resultURL = URL(fileURLWithPath: pending.file.path + ".result")
+        if let data = try? Data(contentsOf: resultURL),
+           let result = try? JSONDecoder().decode(CreationResult.self, from: data), result.id == pending.id {
+            try? manager.removeItem(at: resultURL)
+            pendingCreation = nil
+            creationPopover?.behavior = .transient
+            if let error = result.error {
+                creationMessage?.stringValue = error
+                createButton?.isEnabled = true; nameField?.isEnabled = true; parentButton?.isEnabled = true
+            } else { creationPopover?.performClose(nil) }
+        } else if Date().timeIntervalSince(pending.time) > 35 {
+            // Не переотправляем: расширение могло уже создать папку и ещё открывать окно.
+            try? manager.removeItem(at: pending.file)
+            pendingCreation = nil; creationPopover?.behavior = .transient
+            creationMessage?.stringValue = "Нет подтверждения. Проверьте каталог и окна VS Code перед повтором. Закройте форму и откройте заново."
+        }
     }
 
     @objc func menuClicked(_ sender: NSMenuItem) {

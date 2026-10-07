@@ -141,6 +141,53 @@ class DesktopBridge {
     return data;
   }
 
+  async processCreation(windowID) {
+    if (!this.enabled || !this.createProject) return;
+    const requestFile = path.join(
+      this.directory,
+      `.menubar-create-${windowID}.json`,
+    );
+    const processing = `${requestFile}.processing`;
+    try {
+      await fs.rename(requestFile, processing);
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    let request;
+    try {
+      request = JSON.parse(await fs.readFile(processing, "utf8"));
+      if (
+        request?.protocol !== 1 ||
+        typeof request.id !== "string" ||
+        !/^[a-f0-9-]{36}$/i.test(request.id) ||
+        request.windowID !== windowID ||
+        !Number.isFinite(request.time) ||
+        Date.now() - request.time < -5000 ||
+        Date.now() - request.time > 30000 ||
+        typeof request.parent !== "string" ||
+        !path.isAbsolute(request.parent) ||
+        typeof request.name !== "string" ||
+        request.name.length > 120
+      )
+        throw new Error("Некорректный или устаревший запрос создания проекта.");
+      let result;
+      try {
+        const folder = await this.createProject(request);
+        result = { id: request.id, folder };
+      } catch (error) {
+        result = { id: request.id, error: error.message };
+      }
+      const destination = `${requestFile}.result`;
+      const temporary = `${destination}.tmp`;
+      await fs.writeFile(temporary, JSON.stringify(result), { mode: 0o600 });
+      await fs.rename(temporary, destination);
+    } finally {
+      // Запрос адресован одному окну; после захвата никогда не выполняется повторно.
+      await fs.rm(processing, { force: true });
+    }
+  }
+
   async status() {
     const heartbeat = await this.heartbeat();
     let text;
@@ -150,8 +197,8 @@ class DesktopBridge {
       if (heartbeat.screen)
         text += ` Экран по данным macOS: ${heartbeat.screen}.`;
       if (!projectCount)
-        text += " Нет открытых проектов — кнопки в строке меню не нужны.";
-      else if (!heartbeat.statusItemVisible || !heartbeat.buttonWindowVisible)
+        text += " Нет открытых проектов; доступна кнопка нового проекта.";
+      if (!heartbeat.statusItemVisible || !heartbeat.buttonWindowVisible)
         text += " Кнопки проектов сейчас не отображаются.";
       else
         text +=

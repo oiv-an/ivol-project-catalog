@@ -327,6 +327,26 @@ async function activate(context) {
         labelLength: desktop.labelLength,
         focused: vscode.window.state.focused,
         agentTime: agent.updatedAt,
+        creation:
+          desktop.enabled && provider.initialized && !vscode.env.remoteName
+            ? {
+                protocol: 1,
+                groups: (() => {
+                  sortByActivity(provider.nodes, activity.times);
+                  const groups = (nodes) =>
+                    nodes
+                      .filter((node) => !node.project)
+                      .map((node) => ({
+                        folder: node.folder,
+                        name: provider.name(node),
+                        children: groups(node.children),
+                      }));
+                  return groups(
+                    provider.nodes.flatMap((root) => root.children),
+                  );
+                })(),
+              }
+            : undefined,
         projects:
           process.platform === "darwin"
             ? projectsIn(provider.nodes)
@@ -374,9 +394,7 @@ async function activate(context) {
         "idle",
         "none",
         "inactive",
-      ].find(
-        (status) => states.includes(status),
-      ) || ""
+      ].find((status) => states.includes(status)) || ""
     );
   };
   const currentProject = () => {
@@ -591,6 +609,7 @@ async function activate(context) {
       await desktop.load();
       const windowsChanged = await windows.sync(windowState());
       await desktop.sync();
+      await desktop.processCreation(windows.id);
       if (indexChanged || activityChanged || windowsChanged) redraw();
     } catch (error) {
       report(error);
@@ -1103,6 +1122,22 @@ async function activate(context) {
       vscode.Uri.file(folder),
       { forceNewWindow: true },
     );
+  };
+  desktop.createProject = async ({ parent, name, browse }) => {
+    if (vscode.env.remoteName) throw new Error("Создание доступно только в локальном окне.");
+    await provider.syncIndex();
+    if (provider.scanning) throw new Error("Каталог обновляется. Повторите после завершения.");
+    if (provider.roots.includes(parent))
+      throw new Error("Выберите каталог внутри корня, а не сам корень.");
+    if (browse !== true && (!findNode(parent) || findNode(parent).project))
+      throw new Error("Каталог больше недоступен. Выберите папку заново.");
+    const folder = await createFolder(parent, { name, project: true, anyParent: browse === true });
+    try {
+      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(folder), { forceNewWindow: true });
+    } catch (error) {
+      throw new Error(`Проект создан: ${folder}, но окно не открылось: ${error.message}. Откройте его из каталога.`);
+    }
+    return folder;
   };
   const setProjectMode = async (input, explicit) => {
     const node = findNode(input?.folder);
