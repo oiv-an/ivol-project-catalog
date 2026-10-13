@@ -59,6 +59,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
     var lastOpen = Date.distantPast
     var launching = false
     var emptyTicks = 0
+    var recoveryWork: DispatchWorkItem?
+    var clientsGraceUntil = Date().addingTimeInterval(60)
+    var lastTick = Date()
     // Только последнее действие: диагностика не накапливает историю кликов.
     var lastClick: [String: Any] = [:]
     var lastSwitch: [String: Any] = [:]
@@ -72,6 +75,10 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(restoreMenuBar), name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(restoreMenuBar), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(restoreMenuBar), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         tick()
         let timer = Timer(timeInterval: 2, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
@@ -80,6 +87,24 @@ final class MenuController: NSObject, NSApplicationDelegate {
         RunLoop.main.add(animation, forMode: .common)
         animation.tolerance = 0.03
         animationTimer = animation
+    }
+
+    @objc func restoreMenuBar() {
+        // После сна AppKit может считать старый элемент видимым, хотя строка
+        // меню уже пересоздана. Восстанавливаем регистрацию, сохраняя autosaveName.
+        clientsGraceUntil = Date().addingTimeInterval(60)
+        emptyTicks = 0
+        recoveryWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.creationPopover?.close()
+            if let strip = self.strip { NSStatusBar.system.removeStatusItem(strip) }
+            self.strip = nil
+            self.tick()
+        }
+        recoveryWork = work
+        // Объединяем уведомления пробуждения/мониторов, даём системе обновить экраны.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
     func readWindows() -> [WindowEntry] {
@@ -96,6 +121,11 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     @objc func tick() {
+        let tickTime = Date()
+        if tickTime.timeIntervalSince(lastTick) > 15 || tickTime < lastTick {
+            restoreMenuBar()
+        }
+        lastTick = tickTime
         let control = (try? Data(contentsOf: storage.appendingPathComponent(".menubar-control.json")))
             .flatMap { try? JSONDecoder().decode(Control.self, from: $0) }
         if let control = control {
@@ -109,6 +139,15 @@ final class MenuController: NSObject, NSApplicationDelegate {
         if !enabled.isEmpty { standalone = false }
         let noClients = control == nil ? enabled.isEmpty : connectedWindows == 0
         if noClients && !standalone {
+            if Date() < clientsGraceUntil {
+                // Сохраняем проекты при временно устаревших heartbeat окон,
+                // но не показываем старый статус агента как актуальный.
+                items = items.map { Item(folder: $0.folder, name: $0.name, target: $0.target,
+                                        status: "unknown", focused: false) }
+                render()
+                writeHeartbeat()
+                return
+            }
             emptyTicks += 1
             // Небольшой запас на перезапуск последнего Extension Host.
             if emptyTicks >= 3 { NSApp.terminate(nil) }
@@ -688,6 +727,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        recoveryWork?.cancel()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
         timer?.invalidate()
         animationTimer?.invalidate()
         try? manager.removeItem(at: storage.appendingPathComponent(".menubar-heartbeat.json"))
