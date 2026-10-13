@@ -1,9 +1,34 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, execFile } = require("node:child_process");
+const { promisify } = require("node:util");
 const { release } = require("node:os");
 const { randomUUID } = require("node:crypto");
 const vscode = require("vscode");
+const run = promisify(execFile);
+
+const INSTALLED_APP = "/Applications/IVOLCatalogMenu.app";
+const LSREGISTER =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+
+// Устанавливаем панель в Applications для распознавания менеджерами значков macOS.
+async function ensureInstalled(bundled) {
+  const rel = "Contents/MacOS/IVOLCatalogMenu";
+  try {
+    const [a, b] = await Promise.all([
+      fs.readFile(path.join(bundled, rel)),
+      fs.readFile(path.join(INSTALLED_APP, rel)).catch(() => null),
+    ]);
+    if (!b || !a.equals(b)) {
+      await fs.rm(INSTALLED_APP, { recursive: true, force: true });
+      await run("/usr/bin/ditto", [bundled, INSTALLED_APP]);
+      await run(LSREGISTER, ["-f", INSTALLED_APP]);
+    }
+    return INSTALLED_APP;
+  } catch {
+    return bundled; // Если установка недоступна, запускаем копию расширения.
+  }
+}
 
 // Настройки и управление — один общий файл, независимый от реестра VS Code.
 // Плагин и приложение читают один источник, а heartbeat описывает сам процесс.
@@ -230,9 +255,11 @@ class DesktopBridge {
         this.lastError = "";
         return;
       }
-      const app = this.context.asAbsolutePath(
+      const bundled = this.context.asAbsolutePath(
         "native/macos/bin/IVOLCatalogMenu.app",
       );
+      await fs.access(path.join(bundled, "Contents/MacOS/IVOLCatalogMenu"));
+      const app = await ensureInstalled(bundled);
       const binary = path.join(app, "Contents/MacOS/IVOLCatalogMenu");
       const cli = path.join(vscode.env.appRoot, "bin", "code");
       await fs.access(binary);

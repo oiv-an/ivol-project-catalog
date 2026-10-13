@@ -14,3 +14,6 @@ AI_INSTRUCTIONS.md
 *.log
 artifacts/
 native/macos/bin/
+
+# Private IVOL task history
+/.ivol/
