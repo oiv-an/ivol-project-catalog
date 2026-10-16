@@ -19,12 +19,15 @@ async function openSettings(context, provider) {
 <style nonce="${nonce}">
 body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background);padding:24px;max-width:650px}label{display:block;margin:18px 0 6px}input,textarea{box-sizing:border-box;width:100%;padding:8px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,transparent)}button{padding:8px 12px;margin:8px 8px 0 0;background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0;cursor:pointer}li{margin-bottom:8px;overflow-wrap:anywhere}small{display:block;opacity:.8}#status{margin-top:16px}button:disabled{opacity:.5}
 .desktop-row{display:flex;align-items:center;gap:12px;margin:12px 0}.desktop-row button{font-size:20px;margin:0;min-width:42px}.desktop-row button[aria-pressed="false"]{background:var(--vscode-input-background);color:var(--vscode-foreground);outline:1px solid var(--vscode-input-border,var(--vscode-descriptionForeground))}.desktop-row label{margin:0}#desktop-length{max-width:100px}
+[hidden]{display:none!important}
 </style></head><body><h2>Каталог проектов</h2>
 <h3>Быстрый доступ вне VS Code</h3>
 <div class="desktop-row"><button id="menubar" type="button" ${initialMac ? "" : "disabled"} aria-pressed="${initialEnabled}" aria-label="Проекты в строке меню macOS" title="Включить или выключить проекты в строке меню macOS">▤</button><label for="menubar">Проекты в строке меню macOS</label><span id="menubar-state">${initialEnabled ? "Включено" : "Выключено"}</span></div>
 <small id="desktop-help">Переключатель применяется сразу — нажимать «Сохранить настройки» не нужно. Одна общая полоска открытых проектов: клик по названию переключает окно, рядом показано состояние агента. Помощник работает без значка Dock.</small>
 <small id="desktop-status" role="status"></small>
 <small id="desktop-runtime" role="status">Проверка связи с приложением…</small>
+<div class="desktop-row" ${initialMac ? "" : "hidden"}><button id="accessibility" type="button" ${initialMac ? "" : "disabled"} aria-label="Открыть Универсальный доступ в настройках macOS" title="Открыть настройки macOS → Конфиденциальность и безопасность → Универсальный доступ">⚿</button><label for="accessibility">Разрешение для определения свёрнутых окон</label></div>
+<small ${initialMac ? "" : "hidden"}>Нажмите ⚿ и включите доступ для IVOL Cataloger / IVOLCatalogMenu. Если после обновления доступ перестал работать, выключите и включите его заново. Кнопка только открывает системные настройки, не выдаёт разрешение автоматически.</small>
 <label for="desktop-length">Букв в коротком названии проекта</label><input id="desktop-length" type="number" min="2" max="12" value="4">
 <small>При совпадении добавляются последние буквы, затем родительская папка и номер. Полное название и путь — при наведении. Все проекты внутри одного элемента. ⌘ + перетаскивание переносит всю полоску; новые проекты добавляются в неё автоматически. Правый клик или +N открывает общий список.</small>
 <hr>
@@ -39,6 +42,7 @@ let menuBar=${initialEnabled},desktopBusy=false,mac=${initialMac};const updateDe
 window.addEventListener('error',event=>{el('desktop-status').textContent='Ошибка интерфейса: '+event.message;api.postMessage({type:'clientError',error:String(event.message).slice(0,500)});});
 el('menubar').onclick=()=>{if(!mac||desktopBusy)return;desktopBusy=true;updateDesktop();el('desktop-status').textContent='';api.postMessage({type:'menuBar',enabled:!menuBar});};
 el('save').onclick=()=>{el('save').disabled=true;api.postMessage({type:'save',labelLength:Number(el('desktop-length').value),recent:Number(el('recent').value),excludes:el('excludes').value.split('\\n').map(s=>s.trim()).filter(Boolean)});};
+el('accessibility').onclick=()=>api.postMessage({type:'accessibility'});
 el('add').onclick=()=>api.postMessage({type:'add'});
 el('hidden').onclick=()=>api.postMessage({type:'hidden'});
 window.addEventListener('message',({data})=>{
@@ -84,6 +88,21 @@ window.addEventListener('message',({data})=>{
       }
       if (message.type === "ready")
         provider.log?.("Настройки: интерфейс подключён");
+      if (message.type === "accessibility") {
+        if (process.platform !== "darwin") return;
+        const opened = await vscode.env.openExternal(
+          vscode.Uri.parse(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+          ),
+        );
+        await panel.webview.postMessage({
+          type: "status",
+          text: opened
+            ? "В системных настройках включите Универсальный доступ для IVOL Cataloger / IVOLCatalogMenu."
+            : "Не удалось открыть системные настройки. Откройте macOS → Конфиденциальность и безопасность → Универсальный доступ вручную.",
+        });
+        return;
+      }
       if (message.type === "menuBar") {
         provider.log?.(
           `Настройки: переключение строки меню → ${message.enabled}`,

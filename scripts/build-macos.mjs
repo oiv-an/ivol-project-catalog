@@ -59,11 +59,33 @@ writeFileSync(
 </dict></plist>
 `,
 );
+// Ad-hoc подпись привязывает разрешения macOS (Универсальный доступ) к cdhash
+// конкретной сборки: после каждой пересборки переключатель в настройках
+// остаётся включённым, но перестаёт действовать. Постоянный сертификат даёт
+// стабильное designated requirement (идентификатор + сертификат).
+// IVOL_CODESIGN_IDENTITY="-" принудительно включает ad-hoc; в CI — ad-hoc.
+function signingIdentity() {
+  const explicit = process.env.IVOL_CODESIGN_IDENTITY;
+  if (explicit) return explicit;
+  if (process.env.CI) return "-";
+  const found = spawnSync(
+    "/usr/bin/security",
+    ["find-identity", "-v", "-p", "codesigning"],
+    { encoding: "utf8" },
+  );
+  const match = /^\s*\d+\)\s+([0-9A-F]{40})\s/m.exec(found.stdout || "");
+  return match ? match[1] : "-";
+}
+const identity = signingIdentity();
 run("/usr/bin/codesign", [
   "--force",
   "--sign",
-  "-",
+  identity,
+  "--identifier",
+  "ivol.catalog.menubar",
   "--timestamp=none",
   "native/macos/bin/IVOLCatalogMenu.app",
 ]);
-console.log("Помощник macOS собран: Apple Silicon + Intel, macOS 14+.");
+console.log(
+  `Помощник macOS собран: Apple Silicon + Intel, macOS 14+. Подпись: ${identity === "-" ? "ad-hoc (разрешения macOS сбрасываются при пересборке)" : "постоянный сертификат"}.`,
+);

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Darwin
+import ApplicationServices
 
 struct Agent: Decodable { let status: String; let folder: String? }
 struct Project: Decodable { let folder: String; let name: String }
@@ -31,6 +32,7 @@ struct Item {
     let target: String
     let status: String
     let focused: Bool
+    var minimized: Bool? = nil
 }
 
 final class MenuController: NSObject, NSApplicationDelegate {
@@ -44,6 +46,10 @@ final class MenuController: NSObject, NSApplicationDelegate {
     var animationFrame = 0
     var iconRanges: [(range: NSRange, status: String)] = []
     var items: [Item] = []
+    // Связываем реестр проектов с реальным окном только при подтверждённом фокусе.
+    // Названия окон не уникальны и не подходят для определения проекта.
+    var nativeWindows: [String: AXUIElement] = [:]
+    var focusCandidate: (id: String, window: AXUIElement, heartbeat: Double)?
     var strip: NSStatusItem?
     var segments: [(folder: String?, start: CGFloat, end: CGFloat)] = []
     var creationPopover: NSPopover?
@@ -120,6 +126,75 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
     }
 
+    var windowDetection: [String: Any] = [:]
+
+    func axValue(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+        guard error == .success else {
+            windowDetection["lastAXError"] = ["attribute": attribute, "code": error.rawValue]
+            return nil
+        }
+        return value
+    }
+
+    func minimizedStates(_ windows: [WindowEntry]) -> [String: Bool] {
+        let trusted = AXIsProcessTrusted()
+        windowDetection = ["accessibilityTrusted": trusted]
+        let liveIDs = Set(windows.map { $0.id })
+        nativeWindows = nativeWindows.filter { liveIDs.contains($0.key) }
+        guard trusted else { nativeWindows.removeAll(); focusCandidate = nil; return [:] }
+        var editorURL = URL(fileURLWithPath: cli).resolvingSymlinksInPath()
+        while editorURL.path != "/" && editorURL.pathExtension.lowercased() != "app" {
+            editorURL.deleteLastPathComponent()
+        }
+        guard let editor = NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && $0.bundleURL?.resolvingSymlinksInPath().path == editorURL.path
+        }) else { nativeWindows.removeAll(); return [:] }
+        let app = AXUIElementCreateApplication(editor.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.2)
+        let focused = windows.filter { $0.desktop?.focused == true }
+        windowDetection["editorActive"] = editor.isActive
+        windowDetection["focusedRegistryIDs"] = focused.map { $0.id }
+        let previousCandidate = focusCandidate
+        focusCandidate = nil
+        if editor.isActive, focused.count == 1,
+           let value = axValue(app, kAXFocusedWindowAttribute),
+           CFGetTypeID(value) == AXUIElementGetTypeID() {
+            let native = value as! AXUIElement
+            if (axValue(native, kAXMinimizedAttribute) as? Bool) == false {
+                focusCandidate = (focused[0].id, native, focused[0].time)
+                // Ждём следующего heartbeat: при переключении реестр может ещё
+                // содержать фокус предыдущего окна. Не связываем по одному снимку.
+                if let candidate = previousCandidate, candidate.id == focused[0].id,
+                   CFEqual(candidate.window, native), focused[0].time > candidate.heartbeat {
+                    nativeWindows = nativeWindows.filter { $0.key == focused[0].id || !CFEqual($0.value, native) }
+                    nativeWindows[focused[0].id] = native
+                }
+            }
+        }
+        var states: [String: Bool] = [:]
+        for (id, native) in nativeWindows {
+            if let minimized = axValue(native, kAXMinimizedAttribute) as? Bool {
+                states[id] = minimized
+            }
+        }
+        windowDetection["mappedWindowIDs"] = Array(nativeWindows.keys).sorted()
+        windowDetection["minimizedByWindowID"] = states
+        return states
+    }
+
+    func windowDescription(_ item: Item) -> String {
+        if item.minimized == true { return " · Окно свёрнуто" }
+        if item.minimized == nil { return " · Свёрнутость не определена" }
+        return ""
+    }
+
+    @objc func enableWindowDetection() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+
     @objc func tick() {
         let tickTime = Date()
         if tickTime.timeIntervalSince(lastTick) > 15 || tickTime < lastTick {
@@ -162,6 +237,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
         let now = Date().timeIntervalSince1970 * 1000
         let rank = ["running": 8, "waiting": 7, "unknown": 6, "stopped": 5, "completed": 4, "idle": 3, "none": 2, "inactive": 1, "": 0]
+        let minimized = minimizedStates(windows)
         var grouped: [String: Item] = [:]
         // Все окна нового протокола, не только инициатор запуска помощника.
         for window in windows.sorted(by: { $0.id < $1.id }) {
@@ -176,12 +252,14 @@ final class MenuController: NSObject, NSApplicationDelegate {
                 }
                 if rank[status] == nil { status = "unknown" }
                 let item = Item(folder: project.folder, name: project.name, target: window.target,
-                                status: status, focused: desktop.focused)
+                                status: status, focused: desktop.focused, minimized: minimized[window.id])
                 if let previous = grouped[project.folder] {
                     let chosen = desktop.focused ? item : previous
                     let agentStatus = (rank[status] ?? 0) > (rank[previous.status] ?? 0) ? status : previous.status
                     grouped[project.folder] = Item(folder: chosen.folder, name: chosen.name, target: chosen.target,
-                                                   status: agentStatus, focused: previous.focused || desktop.focused)
+                                                   status: agentStatus, focused: previous.focused || desktop.focused,
+                                                   minimized: previous.minimized == false || item.minimized == false ? false
+                                                       : (previous.minimized == true && item.minimized == true ? true : nil))
                 } else { grouped[project.folder] = item }
             }
         }
@@ -207,7 +285,8 @@ final class MenuController: NSObject, NSApplicationDelegate {
             "buttonFrame": buttonWindow.map { NSStringFromRect($0.frame) } ?? "",
             "screen": buttonWindow?.screen?.localizedName ?? "",
             "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
-            "launching": launching, "lastClick": lastClick, "lastSwitch": lastSwitch
+            "launching": launching, "lastClick": lastClick, "lastSwitch": lastSwitch,
+            "windowDetection": windowDetection
         ]
         if let data = try? JSONSerialization.data(withJSONObject: heartbeat) {
             try? data.write(to: storage.appendingPathComponent(".menubar-heartbeat.json"), options: .atomic)
@@ -269,7 +348,8 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
         for project in items {
             let info = state(project.status)
-            let item = NSMenuItem(title: "\(info.0) \(project.name) — \(info.2)", action: #selector(menuClicked(_:)), keyEquivalent: "")
+            let marker = project.minimized == true ? " ↘↖" : ""
+            let item = NSMenuItem(title: "\(info.0)\(marker) \(project.name) — \(info.2)\(windowDescription(project))", action: #selector(menuClicked(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = project.folder
             item.toolTip = project.folder
@@ -277,6 +357,15 @@ final class MenuController: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
+        if !AXIsProcessTrusted() {
+            let access = NSMenuItem(title: "↘↖ Включить определение свёрнутых окон…", action: #selector(enableWindowDetection), keyEquivalent: "")
+            access.target = self
+            menu.addItem(access)
+        } else {
+            let hint = NSMenuItem(title: "↘↖ Для определения сначала активируйте каждое окно", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            menu.addItem(hint)
+        }
         let note = NSMenuItem(title: "Настройки: VS Code → Проекты → ⚙", action: nil, keyEquivalent: "")
         note.isEnabled = false
         menu.addItem(note)
@@ -391,7 +480,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
             let part = NSMutableAttributedString(string: "  ", attributes: [.font: font])
             let iconOffset = part.length
             part.append(icon(project.status))
-            part.append(NSAttributedString(string: " " + (labels[project.folder] ?? project.name),
+            part.append(NSAttributedString(string: (project.minimized == true ? " ↘↖ " : " ") + (labels[project.folder] ?? project.name),
                 attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
             let start = title.size().width
             if start + part.size().width > limit - 65 && index > 0 {
@@ -407,9 +496,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
         strip.length = ceil(title.size().width) + 12
         button.attributedTitle = title
-        button.toolTip = "＋ — Новый проект\n\n" + items.map { "\($0.name) — \(state($0.status).2)\n\($0.folder)" }.joined(separator: "\n\n")
+        button.toolTip = "＋ — Новый проект\n\n" + items.map { "\($0.name) — \(state($0.status).2)\(windowDescription($0))\n\($0.folder)" }.joined(separator: "\n\n")
             + "\n\nКлик по названию — перейти; правый клик — все проекты; ⌘ + перетаскивание — вся полоска"
-        button.setAccessibilityLabel("Новый проект; " + items.map { "\($0.name), \(state($0.status).2)" }.joined(separator: "; "))
+        button.setAccessibilityLabel("Новый проект; " + items.map { "\($0.name), \(state($0.status).2)\(windowDescription($0))" }.joined(separator: "; "))
         button.target = self
         button.action = #selector(projectClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -666,6 +755,18 @@ final class MenuController: NSObject, NSApplicationDelegate {
             return
         }
         lastSwitch["editorPID"] = editor.processIdentifier
+        // Запрос VS Code открыть папку не разворачивает окно из Dock.
+        // Разворачиваем только подтверждённо сопоставленное окно этого проекта.
+        if AXIsProcessTrusted(), let native = nativeWindows[window.id] {
+            AXUIElementSetMessagingTimeout(native, 0.3)
+            if (axValue(native, kAXMinimizedAttribute) as? Bool) == true {
+                let result = AXUIElementSetAttributeValue(native, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                lastSwitch["axRestore"] = result.rawValue
+            }
+            AXUIElementPerformAction(native, kAXRaiseAction as CFString)
+        } else {
+            lastSwitch["axRestore"] = AXIsProcessTrusted() ? "not-mapped" : "no-access"
+        }
         lastSwitch["executable"] = executable.path
         let process = Process()
         // Прямой executable передаёт запрос существующему VS Code через single-instance IPC.
