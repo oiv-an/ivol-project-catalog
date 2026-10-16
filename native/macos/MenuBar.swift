@@ -173,6 +173,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        mapByTitle(app, windows)
         var states: [String: Bool] = [:]
         for (id, native) in nativeWindows {
             if let minimized = axValue(native, kAXMinimizedAttribute) as? Bool {
@@ -188,6 +189,36 @@ final class MenuController: NSObject, NSApplicationDelegate {
         if item.minimized == true { return " · Окно свёрнуто" }
         if item.minimized == nil { return " · Свёрнутость не определена" }
         return ""
+    }
+
+    // Запасное сопоставление без ожидания фокуса: заголовок окна VS Code
+    // заканчивается на «— ИМЯ_ПАПКИ». Связываем только однозначные пары:
+    // одно окно реестра с этим именем и ровно одно несопоставленное AX-окно.
+    func mapByTitle(_ app: AXUIElement, _ windows: [WindowEntry]) {
+        let unmapped = windows.filter { nativeWindows[$0.id] == nil }
+        guard !unmapped.isEmpty,
+              let list = axValue(app, kAXWindowsAttribute) as? [AXUIElement] else { return }
+        let mapped = Array(nativeWindows.values)
+        let free = list.filter { candidate in !mapped.contains(where: { CFEqual($0, candidate) }) }
+        var names: [String: Int] = [:]
+        for window in windows {
+            guard let projects = window.desktop?.projects, projects.count == 1 else { continue }
+            names[projects[0].name, default: 0] += 1
+        }
+        var byTitle: [String] = []
+        for window in unmapped {
+            guard let projects = window.desktop?.projects, projects.count == 1,
+                  names[projects[0].name] == 1 else { continue }
+            let name = projects[0].name
+            let matches = free.filter { native in
+                guard let title = axValue(native, kAXTitleAttribute) as? String else { return false }
+                return title == name || title.hasSuffix(" — " + name) || title.hasSuffix(" - " + name)
+            }
+            guard matches.count == 1 else { continue }
+            nativeWindows[window.id] = matches[0]
+            byTitle.append(window.id)
+        }
+        if !byTitle.isEmpty { windowDetection["titleMappedIDs"] = byTitle }
     }
 
     @objc func enableWindowDetection() {
