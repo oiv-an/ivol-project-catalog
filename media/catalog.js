@@ -130,6 +130,8 @@ function row(node, depth, recent) {
       webviewSection: "folder",
       folder: node.folder,
       ivolExplicitProject: !!node.explicitProject,
+      ivolProject: !!node.project,
+      ivolCanMark: !!node.canMarkProject,
       preventDefaultContextMenuItems: true,
     });
   const toggle = document.createElement("button");
@@ -259,15 +261,21 @@ function row(node, depth, recent) {
     line.append(control);
   };
   if (!recent && node.canMarkProject)
-    action(
-      "markProject",
-      "◎",
-      "Сделать эту папку единым проектом",
-    );
+    action("markProject", "◎", "Сделать эту папку единым проектом");
   if (!recent)
-    action("folderMenu", "＋", "Действия с папкой: создать, назначить проектом, добавить пропущенные");
+    action(
+      "folderMenu",
+      "＋",
+      "Действия с папкой: создать, назначить проектом, добавить пропущенные",
+    );
   action("rename", "✎", "Изменить название в каталоге");
   action("hide", "⊘", "Скрыть папку (вернуть можно в настройках)");
+  if (!recent && node.project)
+    action(
+      "archiveProject",
+      "🗄",
+      "Архивировать: сжать в ARCHIVE и убрать из дерева",
+    );
   container.append(line);
   if (!recent && node.children.length && isExpanded(node.id)) {
     const children = document.createElement("div");
@@ -389,6 +397,7 @@ function render() {
     target.replaceChildren();
     for (const node of nodes) target.append(row(node, 0, id !== "tree"));
   }
+  renderArchive();
   document.getElementById("newWindow").checked = state.newWindow;
   if (focused && !loading) {
     const rows = [...document.querySelectorAll(".row")];
@@ -403,6 +412,122 @@ function render() {
   }
   window.scrollTo(0, scroll);
 }
+const archiveOpen = new Set(api.getState()?.archiveOpen || []);
+const saveArchiveOpen = () =>
+  api.setState({ ...api.getState(), archiveOpen: [...archiveOpen] });
+const formatSize = (bytes) =>
+  bytes >= 1048576
+    ? `${(bytes / 1048576).toFixed(1)} МБ`
+    : `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+const countFiles = (nodes) =>
+  nodes.reduce((sum, n) => sum + (n.dir ? countFiles(n.children) : 1), 0);
+function archiveRow(node) {
+  const container = document.createElement("div");
+  container.setAttribute("role", "listitem");
+  const line = document.createElement("div");
+  line.className = "row archive-row";
+  line.title = node.path;
+  const toggle = document.createElement("button");
+  toggle.className = "toggle";
+  const open = query || archiveOpen.has(node.path);
+  if (node.dir && node.children.length) {
+    toggle.textContent = open ? "▾" : "▸";
+    toggle.setAttribute(
+      "aria-label",
+      `${open ? "Свернуть" : "Раскрыть"} ${node.name}`,
+    );
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.onclick = () => {
+      if (archiveOpen.has(node.path)) archiveOpen.delete(node.path);
+      else archiveOpen.add(node.path);
+      saveArchiveOpen();
+      render();
+    };
+  } else {
+    toggle.classList.add("spacer");
+    toggle.tabIndex = -1;
+    toggle.setAttribute("aria-hidden", "true");
+  }
+  const button = document.createElement("button");
+  button.className = "entry";
+  const heading = document.createElement("span");
+  heading.className = "name-line";
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = (node.dir ? "" : "📦 ") + node.name;
+  heading.append(name);
+  if (node.dir) {
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `(${countFiles(node.children)})`;
+    heading.append(count);
+  }
+  const date = document.createElement("span");
+  date.className = "date";
+  if (!node.dir) {
+    const d = new Date(node.modified);
+    const pad = (n) => String(n).padStart(2, "0");
+    date.textContent = `${formatSize(node.size)} · ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)}`;
+  }
+  button.append(heading, date);
+  button.setAttribute(
+    "aria-label",
+    node.dir
+      ? `Папка архива ${node.name}`
+      : `Архив ${node.name}, показать в Finder`,
+  );
+  button.title = node.dir ? node.path : `Показать в Finder: ${node.path}`;
+  button.onclick = () => {
+    if (node.dir) toggle.click();
+    else api.postMessage({ type: "revealArchive", path: node.path });
+  };
+  line.append(toggle, button);
+  container.append(line);
+  if (node.dir && node.children.length && open) {
+    const children = document.createElement("div");
+    children.className = "children";
+    children.setAttribute("role", "list");
+    for (const child of node.children) children.append(archiveRow(child));
+    container.append(children);
+  }
+  return container;
+}
+function filterArchive(nodes) {
+  if (!query) return nodes;
+  return nodes.flatMap((node) => {
+    const children = filterArchive(node.children);
+    return node.name.toLocaleLowerCase().includes(query) || children.length
+      ? [{ ...node, children }]
+      : [];
+  });
+}
+function renderArchive() {
+  const section = document.getElementById("archiveSection");
+  const roots = activityView ? [] : filterArchive(state.archive || []);
+  section.hidden = !roots.length;
+  if (!roots.length) return;
+  const list = document.getElementById("archive");
+  const head = document.getElementById("archiveToggle");
+  const open = !!query || archiveOpen.has("__section");
+  head.setAttribute("aria-expanded", String(open));
+  head.title = open ? "Свернуть архив" : "Показать архив проектов";
+  head.querySelector(".toggle-mark").textContent = open ? "▾" : "▸";
+  document.getElementById("archiveTitle").textContent =
+    roots.length === 1 ? roots[0].name : "ARCHIVE";
+  document.getElementById("archiveCount").textContent =
+    `(${countFiles(roots)})`;
+  list.hidden = !open;
+  list.replaceChildren();
+  if (!open) return;
+  const items = roots.length === 1 ? roots[0].children : roots;
+  for (const node of items) list.append(archiveRow(node));
+}
+document.getElementById("archiveToggle").onclick = () => {
+  if (archiveOpen.has("__section")) archiveOpen.delete("__section");
+  else archiveOpen.add("__section");
+  saveArchiveOpen();
+  render();
+};
 function updateSearch() {
   query = searchInput.value.trim().toLocaleLowerCase();
   searchCollapsed.clear();

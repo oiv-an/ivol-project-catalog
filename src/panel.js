@@ -50,7 +50,7 @@ class CatalogPanel {
       <div class="catalog-search" role="search" aria-label="Поиск в каталоге"><input id="catalogSearch" type="search" placeholder="Поиск папок и проектов…" aria-label="Поиск папок и проектов по названию" aria-controls="tree opened recent favorites" autocomplete="off" spellcheck="false"><button id="clearSearch" type="button" title="Очистить поиск (Escape)" aria-label="Очистить поиск" hidden>×</button></div>
       <div id="catalogStatus" class="catalog-status" role="status" aria-live="polite" aria-atomic="true"></div>
       <section id="recentBlock" class="block recent"><header><h2>Последние активные проекты</h2></header><div id="recent"></div></section>
-      <section id="treeBlock" class="block tree"><header><h2 id="treeTitle">Дерево проектов</h2><button id="treeMode" type="button" title="Показать все проекты по последней активности" aria-label="Показать все проекты по последней активности" aria-pressed="false"><svg class="mode-clock" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg><svg class="mode-folder" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4V3h4l2 2h6v8H2V4Z"/></svg></button><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div></section>
+      <section id="treeBlock" class="block tree"><header><h2 id="treeTitle">Дерево проектов</h2><button id="treeMode" type="button" title="Показать все проекты по последней активности" aria-label="Показать все проекты по последней активности" aria-pressed="false"><svg class="mode-clock" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg><svg class="mode-folder" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4V3h4l2 2h6v8H2V4Z"/></svg></button><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div><div id="archiveSection" class="archive" hidden><button id="archiveToggle" class="archive-head" type="button" aria-expanded="false"><span class="toggle-mark" aria-hidden="true">▸</span><span class="archive-icon" aria-hidden="true">🗄</span><span id="archiveTitle">ARCHIVE</span><span id="archiveCount" class="count"></span></button><div id="archive" role="list" aria-label="Архив проектов" hidden></div></div></section>
       </div>
       <div id="catalogOverlay" class="catalog-overlay" hidden><div class="catalog-busy" role="status" aria-live="polite" aria-atomic="true"><span class="spinner" aria-hidden="true"></span><span id="catalogBusyText">Обновление каталога…</span></div></div>
       <script nonce="${nonce}">${js}</script></body></html>`;
@@ -111,6 +111,16 @@ class CatalogPanel {
             return this.render();
           }
           if (
+            message.type === "revealArchive" &&
+            typeof message.path === "string"
+          ) {
+            await vscode.commands.executeCommand(
+              "ivolCatalog.revealArchive",
+              message.path,
+            );
+            return;
+          }
+          if (
             [
               "open",
               "rename",
@@ -119,6 +129,7 @@ class CatalogPanel {
               "folderMenu",
               "markProject",
               "toggleFavorite",
+              "archiveProject",
             ].includes(message.type) &&
             typeof message.id === "string"
           ) {
@@ -174,7 +185,9 @@ class CatalogPanel {
         relaxed: !!this.model.preferences[node.folder]?.relaxed,
         explicitProject: !!this.model.preferences[node.folder]?.project,
         canMarkProject:
-          !node.root && !this.model.roots.includes(node.folder) &&
+          !node.root &&
+          (!node.project || node.placeholder) &&
+          !this.model.roots.includes(node.folder) &&
           !this.model.preferences[node.folder]?.project,
         folder: node.folder,
         project: !!node.project,
@@ -230,6 +243,7 @@ class CatalogPanel {
             })
           : "",
       })),
+      archive: this.model.roots.length ? this.model.archiveTree || [] : [],
       newWindow: this.context.globalState.get("catalog.newWindow", true),
       hasRoots: this.model.roots.length > 0,
     });

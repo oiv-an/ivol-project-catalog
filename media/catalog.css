@@ -371,6 +371,30 @@ h2 {
   pointer-events: none;
   user-select: none;
 }
+.archive {
+  border-top: 2px solid var(--vscode-panel-border, #555);
+  opacity: 0.85;
+}
+.archive-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: 27px;
+  padding: 0 6px;
+  text-align: left;
+  font-weight: 600;
+  background: var(--vscode-sideBarSectionHeader-background, #2a2a2a);
+}
+.archive-head:hover {
+  background: var(--vscode-list-hoverBackground, #2c2c2c);
+}
+.archive-head .toggle-mark {
+  width: 12px;
+}
+.archive-row .name {
+  color: var(--vscode-descriptionForeground, #aaa);
+}
 .catalog-overlay {
   position: fixed;
   inset: 0;

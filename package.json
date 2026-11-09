@@ -2,7 +2,7 @@
   "name": "ivol-project-catalog",
   "displayName": "IVOL Cataloger",
   "description": "IVOL Cataloger — каталог проектов, последние активные проекты и управление папками в боковой панели VS Code.",
-  "version": "0.7.27",
+  "version": "0.7.29",
   "publisher": "ivol",
   "license": "MIT",
   "author": "IVOL",
@@ -146,6 +146,11 @@
         "command": "ivolCatalog.trashFolder",
         "title": "Удалить в корзину…",
         "category": "Проекты"
+      },
+      {
+        "command": "ivolCatalog.archiveProject",
+        "title": "Архивировать проект…",
+        "category": "Проекты"
       }
     ],
     "menus": {
@@ -196,7 +201,7 @@
         },
         {
           "command": "ivolCatalog.markProject",
-          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder' && !ivolExplicitProject",
+          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder' && ivolCanMark",
           "group": "2_project"
         },
         {
@@ -210,9 +215,14 @@
           "group": "3_visibility"
         },
         {
+          "command": "ivolCatalog.archiveProject",
+          "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder' && ivolProject",
+          "group": "4_delete@1"
+        },
+        {
           "command": "ivolCatalog.trashFolder",
           "when": "webviewId == 'ivolCatalog.panel' && webviewSection == 'folder'",
-          "group": "4_delete"
+          "group": "4_delete@2"
         }
       ],
       "commandPalette": [
@@ -242,6 +252,10 @@
         },
         {
           "command": "ivolCatalog.trashFolder",
+          "when": "false"
+        },
+        {
+          "command": "ivolCatalog.archiveProject",
           "when": "false"
         }
       ]

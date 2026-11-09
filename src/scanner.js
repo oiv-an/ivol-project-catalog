@@ -256,6 +256,11 @@ async function scanRoots(roots, options = {}) {
       compareNames.compare(a.name, b.name),
     )) {
       if (!entry.isDirectory() || skip(entry)) continue;
+      if (
+        entry.name === ARCHIVE_DIR &&
+        (root || (options.rootFolders || []).includes(folder))
+      )
+        continue;
       const childFolder = path.join(folder, entry.name);
       if (
         project &&
@@ -380,4 +385,6 @@ async function scanRoots(roots, options = {}) {
     visited,
   };
 }
-module.exports = { scanRoots, DEFAULT_EXCLUDES };
+// Папка архива внутри каждого корня: zip-файлы проектов, не участвует в обходе.
+const ARCHIVE_DIR = "ARCHIVE";
+module.exports = { scanRoots, DEFAULT_EXCLUDES, ARCHIVE_DIR };

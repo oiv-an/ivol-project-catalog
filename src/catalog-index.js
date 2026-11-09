@@ -25,6 +25,7 @@ function installIndex(provider, context, vscode) {
   };
   const options = (data) => {
     return {
+      rootFolders: data.roots,
       pinnedFolders: data.created,
       projectFolders: Object.keys(data.preferences).filter(
         (f) => data.preferences[f].project,
@@ -54,12 +55,18 @@ function installIndex(provider, context, vscode) {
             // Явное назначение задаёт границу проекта для всех операций индекса.
             n.project = true;
             n.placeholder = false;
-            n.modified = Math.max(n.modified || 0, ...n.children.map((c) => c.modified || 0));
+            n.modified = Math.max(
+              n.modified || 0,
+              ...n.children.map((c) => c.modified || 0),
+            );
             n.children = [];
           } else {
             n.children = visit(n.children, n.id);
             if (!n.project)
-              n.modified = Math.max(0, ...n.children.map((c) => c.modified || 0));
+              n.modified = Math.max(
+                0,
+                ...n.children.map((c) => c.modified || 0),
+              );
           }
           return n;
         });
@@ -296,6 +303,8 @@ function installIndex(provider, context, vscode) {
   provider.removeFolder = (folder) =>
     provider.changeIndex((data) => {
       data.nodes = remove(data.nodes, folder);
+      data.favorites = data.favorites.filter((f) => !within(folder, f));
+      data.created = data.created.filter((f) => !within(folder, f));
     });
   provider.moveFolder = (from, destination) =>
     provider.changeIndex((data) => {

@@ -2,7 +2,8 @@ const vscode = require("vscode");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { realpathSync } = require("node:fs");
-const { DEFAULT_EXCLUDES } = require("./scanner");
+const { execFile } = require("node:child_process");
+const { DEFAULT_EXCLUDES, ARCHIVE_DIR } = require("./scanner");
 const {
   ActivityStore,
   closestProject,
@@ -326,10 +327,19 @@ async function activate(context) {
         .map(([folder]) => folder);
       for (const workspaceFolder of folders) {
         const canonical = canonicalPath(workspaceFolder.uri.fsPath);
-        if (hidden.some((folder) =>
-          canonical === folder || canonical.startsWith(folder + path.sep))) continue;
-        const folder = closestProject(provider.nodes, canonical)?.folder || canonical;
-        desktopProjects.set(folder, { folder, name: provider.name({ folder }) });
+        if (
+          hidden.some(
+            (folder) =>
+              canonical === folder || canonical.startsWith(folder + path.sep),
+          )
+        )
+          continue;
+        const folder =
+          closestProject(provider.nodes, canonical)?.folder || canonical;
+        desktopProjects.set(folder, {
+          folder,
+          name: provider.name({ folder }),
+        });
       }
     }
     return {
@@ -617,7 +627,9 @@ async function activate(context) {
       const windowsChanged = await windows.sync(windowState());
       await desktop.sync();
       await desktop.processCreation(windows.id);
-      if (indexChanged || activityChanged || windowsChanged) redraw();
+      const archiveChanged = await provider.loadArchive?.().catch(() => false);
+      if (indexChanged || activityChanged || windowsChanged || archiveChanged)
+        redraw();
     } catch (error) {
       report(error);
     } finally {
@@ -802,6 +814,271 @@ async function activate(context) {
       moving = false;
     }
   });
+  // Архив: <корень>/ARCHIVE/<путь родителя>/<проект>.zip, исходник — в корзину.
+  const isWithin = (base, file) => {
+    const relative = path.relative(base, file);
+    return (
+      relative === "" ||
+      (!path.isAbsolute(relative) &&
+        relative !== ".." &&
+        !relative.startsWith(".." + path.sep))
+    );
+  };
+  const execute = (command, args) =>
+    new Promise((resolve, reject) =>
+      execFile(
+        command,
+        args,
+        { maxBuffer: 16 * 1024 * 1024 },
+        (error, stdout, stderr) =>
+          error
+            ? reject(
+                new Error(
+                  `${path.basename(command)}: ${String(stderr || error.message)
+                    .trim()
+                    .slice(0, 400)}`,
+                ),
+              )
+            : resolve(stdout),
+      ),
+    );
+  const exists = async (file) => {
+    try {
+      await fs.lstat(file);
+      return true;
+    } catch (error) {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    }
+  };
+  provider.archiveTree = [];
+  const loadArchive = async () => {
+    const walk = async (folder, depth) => {
+      let entries;
+      try {
+        entries = await fs.readdir(folder, { withFileTypes: true });
+      } catch {
+        return [];
+      }
+      const nodes = [];
+      for (const entry of entries) {
+        if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
+        const file = path.join(folder, entry.name);
+        if (entry.isDirectory()) {
+          if (depth < 12)
+            nodes.push({
+              path: file,
+              name: entry.name,
+              dir: true,
+              children: await walk(file, depth + 1),
+            });
+        } else if (entry.isFile()) {
+          let info;
+          try {
+            info = await fs.stat(file);
+          } catch {
+            continue;
+          }
+          nodes.push({
+            path: file,
+            name: entry.name,
+            dir: false,
+            size: info.size,
+            modified: info.mtimeMs,
+            children: [],
+          });
+        }
+      }
+      return nodes.sort(
+        (a, b) =>
+          Number(b.dir) - Number(a.dir) ||
+          (a.dir
+            ? a.name.localeCompare(b.name, "ru", { numeric: true })
+            : b.modified - a.modified),
+      );
+    };
+    const tree = [];
+    for (const root of provider.roots) {
+      const folder = path.join(root, ARCHIVE_DIR);
+      if (!(await exists(folder))) continue;
+      tree.push({
+        path: folder,
+        name:
+          provider.roots.length > 1
+            ? `${ARCHIVE_DIR} · ${path.basename(root)}`
+            : ARCHIVE_DIR,
+        dir: true,
+        children: await walk(folder, 0),
+      });
+    }
+    const changed =
+      JSON.stringify(tree) !== JSON.stringify(provider.archiveTree);
+    provider.archiveTree = tree;
+    return changed;
+  };
+  provider.loadArchive = loadArchive;
+  void loadArchive()
+    .then((changed) => changed && redraw())
+    .catch(report);
+  register("ivolCatalog.archiveProject", async (input) => {
+    if (moving || updatingFavorites || provider.scanning) return;
+    moving = true;
+    let archived;
+    let trashed = false;
+    try {
+      const folder = input?.folder;
+      const root = provider.roots
+        .filter(
+          (r) =>
+            typeof folder === "string" && r !== folder && isWithin(r, folder),
+        )
+        .sort((a, b) => b.length - a.length)[0];
+      const validate = async () => {
+        const node = typeof folder === "string" ? findNode(folder) : undefined;
+        if (
+          !node?.project ||
+          node.root ||
+          !root ||
+          !path.isAbsolute(folder) ||
+          provider.roots.some((r) => isWithin(folder, r))
+        )
+          throw new Error(
+            "Архивировать можно только проект внутри видимого дерева.",
+          );
+        if (isWithin(path.join(root, ARCHIVE_DIR), folder))
+          throw new Error("Проект уже лежит в архиве.");
+        const info = await fs.lstat(folder);
+        if (
+          !info.isDirectory() ||
+          info.isSymbolicLink() ||
+          (await fs.realpath(folder)) !== folder
+        )
+          throw new Error("Папка недоступна или путь изменился.");
+        if (
+          vscode.workspace.textDocuments.some(
+            (doc) =>
+              doc.isDirty &&
+              doc.uri.scheme === "file" &&
+              isWithin(folder, doc.uri.fsPath),
+          )
+        )
+          throw new Error("Сначала сохраните несохранённые файлы проекта.");
+        return info;
+      };
+      const before = await validate();
+      const zip = process.platform === "darwin";
+      const extension = zip ? ".zip" : ".tar.gz";
+      const target = path.join(
+        root,
+        ARCHIVE_DIR,
+        path.relative(root, path.dirname(folder)),
+      );
+      const openElsewhere =
+        windows.find(folder) || provider.ownOpenFolders?.has(folder);
+      const choice = await vscode.window.showWarningMessage(
+        "Архивировать проект и убрать его из дерева?",
+        {
+          modal: true,
+          detail: `${folder}\n\nАрхив: ${path.join(target, path.basename(folder) + extension)}\n\nПапка будет сжата в один файл, проверена и перемещена в корзину.${openElsewhere ? "\n\n⚠ Проект открыт в окне VS Code — закройте его перед архивацией." : ""}\nОстановите процессы проекта во всех окнах.`,
+        },
+        "Архивировать",
+      );
+      if (choice !== "Архивировать") return;
+      const after = await validate();
+      if (before.dev !== after.dev || before.ino !== after.ino)
+        throw new Error(
+          "Папка была заменена во время подтверждения. Повторите действие.",
+        );
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Архивация ${path.basename(folder)}…`,
+        },
+        async () => {
+          await fs.mkdir(target, { recursive: true });
+          if ((await fs.realpath(target)) !== target)
+            throw new Error(`Папка архива является ссылкой: ${target}`);
+          const base = path.basename(folder);
+          let final = path.join(target, base + extension);
+          if (await exists(final)) {
+            const stamp = new Date()
+              .toISOString()
+              .replace(/[-:]/g, "")
+              .replace("T", "-")
+              .slice(0, 15);
+            final = path.join(target, `${base}-${stamp}${extension}`);
+          }
+          if (await exists(final))
+            throw new Error(`Архив уже существует: ${final}`);
+          const partial = path.join(target, `.${path.basename(final)}.partial`);
+          try {
+            await fs.rm(partial, { force: true });
+            if (zip) {
+              await execute("/usr/bin/ditto", [
+                "-c",
+                "-k",
+                "--sequesterRsrc",
+                "--keepParent",
+                folder,
+                partial,
+              ]);
+              await execute("/usr/bin/unzip", ["-tq", partial]);
+            } else {
+              await execute("tar", [
+                "-czf",
+                partial,
+                "-C",
+                path.dirname(folder),
+                base,
+              ]);
+              await execute("gzip", ["-t", partial]);
+            }
+            if (!(await fs.stat(partial)).size)
+              throw new Error("Архив получился пустым.");
+            if (await exists(final))
+              throw new Error(`Архив уже существует: ${final}`);
+            await fs.rename(partial, final);
+          } finally {
+            await fs.rm(partial, { force: true });
+          }
+          archived = final;
+          await vscode.workspace.fs.delete(vscode.Uri.file(folder), {
+            recursive: true,
+            useTrash: true,
+          });
+          trashed = true;
+          await provider.removeFolder(folder);
+        },
+      );
+      await loadArchive().catch(report);
+      redraw();
+      vscode.window.showInformationMessage(`Проект заархивирован: ${archived}`);
+    } catch (error) {
+      await loadArchive().catch(report);
+      if (trashed) {
+        await provider.refresh().catch(report);
+        throw new Error(
+          `Архив создан (${archived}), папка в корзине, но каталог не обновлён: ${error.message}. Нажмите ↻.`,
+        );
+      }
+      if (archived)
+        throw new Error(
+          `Архив создан (${archived}), но папку проекта удалить не удалось: ${error.message}. Удалите её вручную.`,
+        );
+      throw error;
+    } finally {
+      moving = false;
+    }
+  });
+  register("ivolCatalog.revealArchive", async (file) => {
+    if (typeof file !== "string") return;
+    if (!provider.roots.some((r) => isWithin(path.join(r, ARCHIVE_DIR), file)))
+      return;
+    await vscode.commands.executeCommand(
+      "revealFileInOS",
+      vscode.Uri.file(file),
+    );
+  });
   register("ivolCatalog.moveProject", async (input, targetInput) => {
     if (moving || updatingFavorites) return;
     moving = true;
@@ -958,11 +1235,17 @@ async function activate(context) {
     const actual = await fs.realpath(parent);
     if (actual !== parent || !(await fs.stat(parent)).isDirectory())
       throw new Error("Папка-родитель недоступна или является ссылкой.");
-    if (options.project && Object.entries(provider.preferences).some(
-      ([folder, value]) => value.project &&
-        (parent === folder || parent.startsWith(folder + path.sep)),
-    ))
-      throw new Error("Внутри явно назначенного проекта создаются обычные папки. Новый проект создайте рядом или верните автоопределение родителя.");
+    if (
+      options.project &&
+      Object.entries(provider.preferences).some(
+        ([folder, value]) =>
+          value.project &&
+          (parent === folder || parent.startsWith(folder + path.sep)),
+      )
+    )
+      throw new Error(
+        "Внутри явно назначенного проекта создаются обычные папки. Новый проект создайте рядом или верните автоопределение родителя.",
+      );
     const name =
       options.name ??
       (await vscode.window.showInputBox({
@@ -1136,18 +1419,30 @@ async function activate(context) {
     );
   };
   desktop.createProject = async ({ parent, name, browse }) => {
-    if (vscode.env.remoteName) throw new Error("Создание доступно только в локальном окне.");
+    if (vscode.env.remoteName)
+      throw new Error("Создание доступно только в локальном окне.");
     await provider.syncIndex();
-    if (provider.scanning) throw new Error("Каталог обновляется. Повторите после завершения.");
+    if (provider.scanning)
+      throw new Error("Каталог обновляется. Повторите после завершения.");
     if (provider.roots.includes(parent))
       throw new Error("Выберите каталог внутри корня, а не сам корень.");
     if (browse !== true && (!findNode(parent) || findNode(parent).project))
       throw new Error("Каталог больше недоступен. Выберите папку заново.");
-    const folder = await createFolder(parent, { name, project: true, anyParent: browse === true });
+    const folder = await createFolder(parent, {
+      name,
+      project: true,
+      anyParent: browse === true,
+    });
     try {
-      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(folder), { forceNewWindow: true });
+      await vscode.commands.executeCommand(
+        "vscode.openFolder",
+        vscode.Uri.file(folder),
+        { forceNewWindow: true },
+      );
     } catch (error) {
-      throw new Error(`Проект создан: ${folder}, но окно не открылось: ${error.message}. Откройте его из каталога.`);
+      throw new Error(
+        `Проект создан: ${folder}, но окно не открылось: ${error.message}. Откройте его из каталога.`,
+      );
     }
     return folder;
   };
@@ -1171,8 +1466,12 @@ ${node.folder}
       await provider.syncIndex();
       if (!findNode(node.folder) || provider.roots.includes(node.folder))
         throw new Error("Папка изменилась в каталоге. Выберите её заново.");
-      if (provider.roots.some((root) => root.startsWith(node.folder + path.sep)))
-        throw new Error("Внутри отдельно подключён корень каталога. Сначала отключите его, затем назначьте родительскую папку проектом.");
+      if (
+        provider.roots.some((root) => root.startsWith(node.folder + path.sep))
+      )
+        throw new Error(
+          "Внутри отдельно подключён корень каталога. Сначала отключите его, затем назначьте родительскую папку проектом.",
+        );
     }
     const info = await fs.lstat(node.folder);
     if (
@@ -1221,7 +1520,10 @@ ${node.folder}
     const choices = [
       { label: "$(new-folder) Создать новую папку", value: "create" },
     ];
-    if (!provider.preferences[node.folder]?.project)
+    if (
+      !provider.preferences[node.folder]?.project &&
+      (!node.project || node.placeholder)
+    )
       choices.push({
         label: "$(circle-outline) Сделать проектом…",
         value: "project",
