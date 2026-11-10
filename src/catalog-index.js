@@ -203,7 +203,7 @@ function installIndex(provider, context, vscode) {
       parent.empty = false;
     }
   };
-  const rescanBranch = async (data, folder) => {
+  const rescanBranch = async (data, folder, requireComplete = false) => {
     if (!data.roots.some((r) => within(r, folder))) return;
     if (
       Object.entries(data.preferences).some(
@@ -215,6 +215,10 @@ function installIndex(provider, context, vscode) {
       ...options(data),
       branch: true,
     });
+    if (requireComplete && (result.errors || result.limited))
+      throw new Error(
+        "Не удалось полностью прочитать папки проекта: проверьте доступ и лимиты сканирования. Повторите включение.",
+      );
     data.nodes = remove(data.nodes, folder);
     for (const node of result.nodes) insert(data, node);
   };
@@ -241,6 +245,29 @@ function installIndex(provider, context, vscode) {
       provider.scanning = false;
       if (!provider.disposed) provider.onStatus?.();
     }
+  };
+  provider.toggleProjectContainer = async (folder) => {
+    let enabled = false;
+    await provider.changeIndex(async (data) => {
+      const node = find(data.nodes, folder);
+      if (!node?.project || node.root || data.roots.includes(folder))
+        throw new Error("Проект изменился в каталоге. Выберите его заново.");
+      enabled = !data.preferences[folder]?.projectContainer;
+      data.preferences[folder] = {
+        ...data.preferences[folder],
+        project: true,
+        projectContainer: enabled,
+      };
+      if (!data.created.includes(folder)) data.created.push(folder);
+      if (enabled) {
+        // Always replace the branch with a fresh filesystem scan on enable.
+        data.settings = scanSettings();
+        await rescanBranch(data, folder, true);
+      } else {
+        node.children = [];
+      }
+    });
+    return enabled;
   };
   provider.savePreferences = async (preferences) => {
     const before = provider.preferences;

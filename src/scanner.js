@@ -223,6 +223,7 @@ async function scanRoots(roots, options = {}) {
     root = false,
     depth = 0,
     include = false,
+    containerContents = false,
   ) {
     check();
     if (isHidden(folder) || path.basename(folder).startsWith(".")) return null;
@@ -285,10 +286,17 @@ async function scanRoots(roots, options = {}) {
         false,
         depth + 1,
         relaxed.has(folder) || pinned.has(childFolder),
+        containers.has(folder) || (containerContents && !project),
       );
       if (child) node.children.push(child);
     }
-    if (include && !pinned.has(folder) && !project && !node.children.length) {
+    if (
+      include &&
+      !containerContents &&
+      !pinned.has(folder) &&
+      !project &&
+      !node.children.length
+    ) {
       node.project = true;
       node.placeholder = true;
       found.set(folder, node);
@@ -297,7 +305,8 @@ async function scanRoots(roots, options = {}) {
       project ||
       pinned.has(folder) ||
       node.children.length ||
-      include
+      include ||
+      containerContents
       ? node
       : null;
   }

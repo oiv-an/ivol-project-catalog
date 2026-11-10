@@ -275,8 +275,8 @@ function row(node, depth, recent) {
       "toggleProjectContainer",
       "",
       node.projectContainer
-        ? "Проект + папка: выключить показ вложенных проектов"
-        : "Проект + папка: показывать вложенные проекты",
+        ? "Проект + папка: скрыть вложенные папки"
+        : "Проект + папка: заново просканировать и показать вложенные папки",
     );
     containerToggle.classList.add("container-toggle");
     containerToggle.setAttribute(

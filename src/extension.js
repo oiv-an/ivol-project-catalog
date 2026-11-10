@@ -1506,11 +1506,7 @@ ${node.folder}
     const node = findNode(input?.folder);
     if (!node?.project || node.root || provider.roots.includes(node.folder))
       return;
-    const enabled = !provider.preferences[node.folder]?.projectContainer;
-    await provider.setPreference(node.folder, {
-      project: true,
-      projectContainer: enabled,
-    });
+    const enabled = await provider.toggleProjectContainer(node.folder);
     if (enabled) view.expandFolder(node.folder);
   });
   register("ivolCatalog.markProject", (input) => setProjectMode(input, true));
