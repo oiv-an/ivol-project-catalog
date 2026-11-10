@@ -121,6 +121,7 @@ class ProjectTree {
             hidden: value.hidden === true,
             relaxed: value.relaxed === true,
             project: value.project === true,
+            projectContainer: value.projectContainer === true,
           },
         ]),
     );
@@ -360,7 +361,11 @@ async function activate(context) {
                   sortByActivity(provider.nodes, activity.times);
                   const groups = (nodes) =>
                     nodes
-                      .filter((node) => !node.project)
+                      .filter(
+                        (node) =>
+                          !node.project ||
+                          provider.preferences[node.folder]?.projectContainer,
+                      )
                       .map((node) => ({
                         folder: node.folder,
                         name: provider.name(node),
@@ -1209,6 +1214,7 @@ async function activate(context) {
     ];
     return (
       !text ||
+      text.startsWith(".") ||
       text === "." ||
       text === ".." ||
       /[/\\\x00-\x1f]/.test(text) ||
@@ -1240,11 +1246,12 @@ async function activate(context) {
       Object.entries(provider.preferences).some(
         ([folder, value]) =>
           value.project &&
+          !value.projectContainer &&
           (parent === folder || parent.startsWith(folder + path.sep)),
       )
     )
       throw new Error(
-        "Внутри явно назначенного проекта создаются обычные папки. Новый проект создайте рядом или верните автоопределение родителя.",
+        "Внутри единого проекта создаются обычные папки. Включите у родителя режим «Проект + папка», чтобы создавать вложенные проекты.",
       );
     const name =
       options.name ??
@@ -1305,7 +1312,11 @@ async function activate(context) {
         [
           ...new Map(
             nodes
-              .filter((node) => !node.project)
+              .filter(
+                (node) =>
+                  !node.project ||
+                  provider.preferences[node.folder]?.projectContainer,
+              )
               .map((node) => [node.folder, node]),
           ).values(),
         ].sort(
@@ -1426,7 +1437,12 @@ async function activate(context) {
       throw new Error("Каталог обновляется. Повторите после завершения.");
     if (provider.roots.includes(parent))
       throw new Error("Выберите каталог внутри корня, а не сам корень.");
-    if (browse !== true && (!findNode(parent) || findNode(parent).project))
+    if (
+      browse !== true &&
+      (!findNode(parent) ||
+        (findNode(parent).project &&
+          !provider.preferences[parent]?.projectContainer))
+    )
       throw new Error("Каталог больше недоступен. Выберите папку заново.");
     const folder = await createFolder(parent, {
       name,
@@ -1480,8 +1496,23 @@ ${node.folder}
       (await fs.realpath(node.folder)) !== node.folder
     )
       throw new Error("Папка недоступна или является ссылкой.");
-    await provider.setPreference(node.folder, { project: explicit });
+    await provider.setPreference(node.folder, {
+      project: explicit,
+      projectContainer: false,
+    });
   };
+  register("ivolCatalog.toggleProjectContainer", async (input) => {
+    await provider.syncIndex();
+    const node = findNode(input?.folder);
+    if (!node?.project || node.root || provider.roots.includes(node.folder))
+      return;
+    const enabled = !provider.preferences[node.folder]?.projectContainer;
+    await provider.setPreference(node.folder, {
+      project: true,
+      projectContainer: enabled,
+    });
+    if (enabled) view.expandFolder(node.folder);
+  });
   register("ivolCatalog.markProject", (input) => setProjectMode(input, true));
   register("ivolCatalog.autoProject", (input) => setProjectMode(input, false));
   // Правый клик по строке дерева: webview/context передаёт data-vscode-context.
@@ -1520,6 +1551,11 @@ ${node.folder}
     const choices = [
       { label: "$(new-folder) Создать новую папку", value: "create" },
     ];
+    if (provider.preferences[node.folder]?.projectContainer)
+      choices.push({
+        label: "$(new-folder) Создать вложенный проект…",
+        value: "nestedProject",
+      });
     if (
       !provider.preferences[node.folder]?.project &&
       (!node.project || node.placeholder)
@@ -1538,6 +1574,7 @@ ${node.folder}
     const choice = await vscode.window.showQuickPick(choices, {
       title: `Папка: ${provider.name(node)}`,
     });
+    if (choice?.value === "nestedProject") await createProject(node.folder);
     if (choice?.value === "project") await setProjectMode(node, true);
     if (choice?.value === "create") await createFolder(node.folder);
     if (choice?.value === "include")

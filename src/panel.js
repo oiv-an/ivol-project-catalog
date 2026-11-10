@@ -128,6 +128,7 @@ class CatalogPanel {
               "includeFolders",
               "folderMenu",
               "markProject",
+              "toggleProjectContainer",
               "toggleFavorite",
               "archiveProject",
             ].includes(message.type) &&
@@ -184,6 +185,8 @@ class CatalogPanel {
         placeholder: !!node.placeholder,
         relaxed: !!this.model.preferences[node.folder]?.relaxed,
         explicitProject: !!this.model.preferences[node.folder]?.project,
+        projectContainer:
+          !!this.model.preferences[node.folder]?.projectContainer,
         canMarkProject:
           !node.root &&
           (!node.project || node.placeholder) &&

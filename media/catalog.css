@@ -193,6 +193,22 @@ h2 {
   width: 6px;
   border-top: 1px solid var(--vscode-tree-indentGuidesStroke, #666);
 }
+.container-toggle svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.row-action.container-toggle[aria-pressed="true"] {
+  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, #007acc);
+  border-radius: 3px;
+  opacity: 1;
+}
 .toggle.spacer {
   visibility: hidden;
 }

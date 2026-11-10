@@ -131,6 +131,7 @@ function row(node, depth, recent) {
       folder: node.folder,
       ivolExplicitProject: !!node.explicitProject,
       ivolProject: !!node.project,
+      ivolProjectContainer: !!node.projectContainer,
       ivolCanMark: !!node.canMarkProject,
       preventDefaultContextMenuItems: true,
     });
@@ -259,6 +260,7 @@ function row(node, depth, recent) {
     control.setAttribute("aria-label", `${title}: ${node.name}`);
     control.onclick = () => api.postMessage({ type, id: node.id });
     line.append(control);
+    return control;
   };
   if (!recent && node.canMarkProject)
     action("markProject", "◎", "Сделать эту папку единым проектом");
@@ -268,6 +270,22 @@ function row(node, depth, recent) {
       "＋",
       "Действия с папкой: создать, назначить проектом, добавить пропущенные",
     );
+  if (!recent && node.project) {
+    const containerToggle = action(
+      "toggleProjectContainer",
+      "",
+      node.projectContainer
+        ? "Проект + папка: выключить показ вложенных проектов"
+        : "Проект + папка: показывать вложенные проекты",
+    );
+    containerToggle.classList.add("container-toggle");
+    containerToggle.setAttribute(
+      "aria-pressed",
+      String(!!node.projectContainer),
+    );
+    containerToggle.innerHTML =
+      '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 2h4v4H2zM10 10h4v4h-4zM4 6v6h6M10 4h4M12 2v4"/></svg>';
+  }
   action("rename", "✎", "Изменить название в каталоге");
   action("hide", "⊘", "Скрыть папку (вернуть можно в настройках)");
   if (!recent && node.project)

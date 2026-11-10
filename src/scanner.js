@@ -119,6 +119,7 @@ async function scanRoots(roots, options = {}) {
   const detectFiles = options.detectBuildFiles !== false;
   const relaxed = new Set(options.relaxedFolders || []);
   const explicitProjects = new Set(options.projectFolders || []);
+  const containers = new Set(options.projectContainerFolders || []);
   const pinned = new Set([
     ...(options.pinnedFolders || []),
     ...explicitProjects,
@@ -148,6 +149,7 @@ async function scanRoots(roots, options = {}) {
   };
   const skip = (entry) =>
     entry.isSymbolicLink() ||
+    (entry.isDirectory() && entry.name.startsWith(".")) ||
     excludes.has(entry.name.toLowerCase()) ||
     EDITOR_DIRS.has(entry.name.toLowerCase());
   const strongMarker = (entry) => {
@@ -223,7 +225,7 @@ async function scanRoots(roots, options = {}) {
     include = false,
   ) {
     check();
-    if (isHidden(folder)) return null;
+    if (isHidden(folder) || path.basename(folder).startsWith(".")) return null;
     if (depth > 40 || visited >= maxEntries) {
       limited = true;
       return null;
@@ -248,7 +250,11 @@ async function scanRoots(roots, options = {}) {
     // Явный проект целиком принадлежит выбранной папке, даже если внутри
     // остались закреплённые/ранее назначенные проекты. Их настройки сохраняем
     // для возврата автоопределения, но не включаем в дерево этого проекта.
-    if (project && (explicitProjects.has(folder) || !pinnedParents.has(folder)))
+    if (
+      project &&
+      !containers.has(folder) &&
+      (explicitProjects.has(folder) || !pinnedParents.has(folder))
+    )
       return node;
     // Внутри проектов ищем только явно созданные папки и пути к ним, не модули.
     if (visited > maxEntries) limited = true;
@@ -264,6 +270,7 @@ async function scanRoots(roots, options = {}) {
       const childFolder = path.join(folder, entry.name);
       if (
         project &&
+        !containers.has(folder) &&
         !pinned.has(childFolder) &&
         !pinnedParents.has(childFolder)
       )

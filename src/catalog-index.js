@@ -30,6 +30,9 @@ function installIndex(provider, context, vscode) {
       projectFolders: Object.keys(data.preferences).filter(
         (f) => data.preferences[f].project,
       ),
+      projectContainerFolders: Object.keys(data.preferences).filter(
+        (f) => data.preferences[f].projectContainer,
+      ),
       relaxedFolders: Object.keys(data.preferences).filter(
         (f) => data.preferences[f].relaxed,
       ),
@@ -46,12 +49,20 @@ function installIndex(provider, context, vscode) {
     );
     const visit = (nodes, parent) =>
       nodes
-        .filter((n) => !hidden.some((f) => within(f, n.folder)))
+        .filter(
+          (n) =>
+            !path.basename(n.folder).startsWith(".") &&
+            !hidden.some((f) => within(f, n.folder)),
+        )
         .map((n) => {
           n.id = parent
             ? `${parent}/${path.basename(n.folder)}`
             : JSON.stringify([n.folder]);
-          if (!n.root && data.preferences[n.folder]?.project) {
+          if (
+            !n.root &&
+            data.preferences[n.folder]?.project &&
+            !data.preferences[n.folder]?.projectContainer
+          ) {
             // Явное назначение задаёт границу проекта для всех операций индекса.
             n.project = true;
             n.placeholder = false;
@@ -74,6 +85,7 @@ function installIndex(provider, context, vscode) {
     return data;
   };
   const apply = (data) => {
+    normalize(data);
     provider.sharedIndex = data;
     provider.nodes = structuredClone(data.nodes);
     provider.initialized = true;
@@ -258,6 +270,8 @@ function installIndex(provider, context, vscode) {
         else if (
           (patch.hidden === false && old.hidden === true) ||
           ("relaxed" in patch && patch.relaxed !== !!old.relaxed) ||
+          ("projectContainer" in patch &&
+            patch.projectContainer !== !!old.projectContainer) ||
           (patch.project === false && old.project === true)
         )
           await rescanBranch(data, folder);
