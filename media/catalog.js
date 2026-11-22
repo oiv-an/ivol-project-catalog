@@ -367,6 +367,10 @@ function render() {
   content.classList.toggle("catalog-disabled", loading);
   content.setAttribute("aria-busy", String(loading));
   document.getElementById("catalogOverlay").hidden = !loading;
+  const warning = document.getElementById("indexWarning");
+  warning.hidden = loading || !state.indexWarning;
+  if (state.indexWarning)
+    warning.title = `${state.indexWarning} Нажмите, чтобы переиндексировать.`;
   const busyText = hasRows ? "Обновление каталога…" : "Загрузка проектов…";
   const busyLabel = document.getElementById("catalogBusyText");
   if (busyLabel.textContent !== busyText) busyLabel.textContent = busyText;

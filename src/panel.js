@@ -43,12 +43,12 @@ class CatalogPanel {
     const nonce = randomBytes(16).toString("hex");
     const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><style nonce="${nonce}">${css}</style></head><body>
       <div id="catalogContent">
-      <section id="openedBlock" class="block recent"><header><h2>Открытые проекты</h2></header><div id="opened"></div></section>
-      <section id="favoritesBlock" class="block favorites"><header><h2>⭐ Избранное</h2><span id="favoritesCount" class="count"></span></header><div id="favorites"></div><p id="favoritesEmpty" class="empty">Нажмите ☆ у проекта, чтобы добавить его сюда.</p></section>
-      <nav aria-label="Управление каталогом"><button data-command="addRoot" title="Подключить папку">＋</button><button data-command="refresh" title="Переиндексировать все проекты">↻</button><button data-command="settings" title="Настройки">⚙</button><label><input id="newWindow" type="checkbox">Новое окно</label></nav>
-      <button class="new-project" data-command="newProject" type="button" title="Создать папку нового проекта и открыть её в новом окне"><span class="new-project-icon" aria-hidden="true">＋</span>Новый проект</button>
+      <nav aria-label="Управление каталогом"><button data-command="addRoot" title="Подключить папку">＋</button><button data-command="refresh" title="Переиндексировать все проекты">↻</button><button id="indexWarning" class="index-warning" data-command="refresh" type="button" title="Индекс неполный: проверьте доступ/лимиты. Нажмите, чтобы переиндексировать" aria-label="Индекс неполный. Переиндексировать" hidden>⚠</button><button data-command="settings" title="Настройки">⚙</button><label><input id="newWindow" type="checkbox">Новое окно</label></nav>
       <div class="catalog-search" role="search" aria-label="Поиск в каталоге"><input id="catalogSearch" type="search" placeholder="Поиск папок и проектов…" aria-label="Поиск папок и проектов по названию" aria-controls="tree opened recent favorites" autocomplete="off" spellcheck="false"><button id="clearSearch" type="button" title="Очистить поиск (Escape)" aria-label="Очистить поиск" hidden>×</button></div>
       <div id="catalogStatus" class="catalog-status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <section id="openedBlock" class="block recent"><header><h2>Открытые проекты</h2></header><div id="opened"></div></section>
+      <section id="favoritesBlock" class="block favorites"><header><h2>⭐ Избранное</h2><span id="favoritesCount" class="count"></span></header><div id="favorites"></div><p id="favoritesEmpty" class="empty">Нажмите ☆ у проекта, чтобы добавить его сюда.</p></section>
+      <button class="new-project" data-command="newProject" type="button" title="Создать папку нового проекта и открыть её в новом окне"><span class="new-project-icon" aria-hidden="true">＋</span>Новый проект</button>
       <section id="recentBlock" class="block recent"><header><h2>Последние активные проекты</h2></header><div id="recent"></div></section>
       <section id="treeBlock" class="block tree"><header><h2 id="treeTitle">Дерево проектов</h2><button id="treeMode" type="button" title="Показать все проекты по последней активности" aria-label="Показать все проекты по последней активности" aria-pressed="false"><svg class="mode-clock" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg><svg class="mode-folder" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4V3h4l2 2h6v8H2V4Z"/></svg></button><button id="treeMenu" type="button" title="Создать каталог первого уровня" aria-label="Создать каталог первого уровня">＋</button></header><div id="tree"></div><div id="archiveSection" class="archive" hidden><button id="archiveToggle" class="archive-head" type="button" aria-expanded="false"><span class="toggle-mark" aria-hidden="true">▸</span><span class="archive-icon" aria-hidden="true">🗄</span><span id="archiveTitle">ARCHIVE</span><span id="archiveCount" class="count"></span></button><div id="archive" role="list" aria-label="Архив проектов" hidden></div></div></section>
       </div>
@@ -220,6 +220,7 @@ class CatalogPanel {
         this.model.initialized &&
         this.model.scannedRoots === JSON.stringify(this.model.roots),
       scanError: this.model.scanError,
+      indexWarning: this.model.indexWarning || "",
       rootCount: this.model.roots.length,
       favorites: this.model.favoriteProjects.map(convert),
       favoritesCount: favorites.size,

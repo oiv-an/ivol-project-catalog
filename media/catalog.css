@@ -36,6 +36,28 @@ nav button {
 nav button:hover {
   background: var(--vscode-toolbar-hoverBackground, #333);
 }
+nav .index-warning {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  font-size: 16px;
+  animation: index-warning-blink 1.2s ease-in-out infinite;
+}
+nav .index-warning[hidden] {
+  display: none;
+}
+@keyframes index-warning-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  nav .index-warning {
+    animation: none;
+  }
+}
 nav label {
   display: flex;
   align-items: center;

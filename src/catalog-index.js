@@ -90,7 +90,8 @@ function installIndex(provider, context, vscode) {
     provider.nodes = structuredClone(data.nodes);
     provider.initialized = true;
     provider.scannedRoots = JSON.stringify(data.roots);
-    provider.scanError = data.warning || "";
+    provider.scanError = "";
+    provider.indexWarning = data.warning || "";
     provider.status = "Общий индекс загружен";
     void vscode.commands.executeCommand(
       "setContext",
