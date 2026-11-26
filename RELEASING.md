@@ -39,7 +39,7 @@ Workflow Release сохраняет сборку пакета, контроль�
 npm run package
 ```
 
-Результат: ivol-project-catalog-<version>.vsix. Старые пакеты сохраняются локально и не входят в Git. В VSIX включены manifest, README, LICENSE, CHANGELOG, src, media и скомпилированный помощник native/macos/bin. Исходник помощника и скрипт сборки хранятся в репозитории; пользователю компилятор не нужен.
+Результат: ivol-project-catalog-<version>.vsix. Старые пакеты удаляются: локально хранится только VSIX текущей версии, в Git пакеты не входят. В VSIX включены manifest, README, LICENSE, CHANGELOG, src, media и скомпилированный помощник native/macos/bin. Исходник помощника и скрипт сборки хранятся в репозитории; пользователю компилятор не нужен.
 
 ## Автоматический релиз
 

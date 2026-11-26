@@ -8,6 +8,10 @@
 
 ## Что нового
 
+### 0.7.35 — 2026-11-26
+
+- Новая папка, в которой пока есть только инструкция для ИИ-агента (AI_INSTRUCTIONS.md, AGENTS.md, CLAUDE.md, GEMINI.md, CURRENT_TASK.md), теперь сразу находится по ↻ и показывается как проект. Раньше такую папку не было видно, а когда в ней появлялись подпапки с кодом, она отображалась как группа.
+
 ### 0.7.34 — 2026-11-25
 
 - Кнопка «＋ Новый проект» теперь наверху, сразу под поиском.
@@ -149,7 +153,7 @@
 
 ## Какие папки считаются проектами
 
-С версии 0.4.8 по умолчанию достаточно признаков IDE/Git, файлов сборки или исходников непосредственно в папке. Учитываются настройки VS Code, JetBrains, Fleet, Zed, Eclipse, проекты Sublime/.NET/Xcode; package.json, composer.json, Gradle (в том числе settings.gradle.kts), Cargo, Go, Python и другие конфигурации; исходники JavaScript/TypeScript, PHP, Python, Java/Kotlin, Dart, Swift, Go, Rust, C/C++, C#, Ruby, Vue, Svelte и HTML.
+С версии 0.4.8 по умолчанию достаточно признаков IDE/Git, файлов сборки или исходников непосредственно в папке. Учитываются настройки VS Code, JetBrains, Fleet, Zed, Eclipse, проекты Sublime/.NET/Xcode; package.json, composer.json, Gradle (в том числе settings.gradle.kts), Cargo, Go, Python и другие конфигурации; исходники JavaScript/TypeScript, PHP, Python, Java/Kotlin, Dart, Swift, Go, Rust, C/C++, C#, Ruby, Vue, Svelte и HTML. С версии 0.7.35 проектом считается и папка с инструкциями ИИ-агентов: AI_INSTRUCTIONS.md, AGENTS.md, CLAUDE.md, GEMINI.md, CURRENT_TASK.md.
 
 Также учитывается вложенная папка **android**, если в ней есть файл settings.gradle/build.gradle (включая .kts) и папка **app**. В таком случае проектом становится родительская папка: например, PLANSHET, а не её android/app. GAME определяется по исходникам в корне. Произвольная непустая папка, только изображения/документы или пустая папка проектом не считаются; группы продолжают содержать найденные проекты.
 

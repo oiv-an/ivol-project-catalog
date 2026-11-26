@@ -75,6 +75,15 @@ const MARKERS = new Set([
   "package.swift",
   ".project",
 ]);
+// Файлы инструкций ИИ-агентов: папка, созданная агентом «под проект»,
+// часто содержит только их, без кода и конфигов сборки.
+const AGENT_FILES = new Set([
+  "ai_instructions.md",
+  "agents.md",
+  "claude.md",
+  "gemini.md",
+  "current_task.md",
+]);
 const compareNames = new Intl.Collator("ru", {
   numeric: true,
   sensitivity: "base",
@@ -96,6 +105,7 @@ const isMarker = (entry) => {
   return (
     entry.isFile() &&
     (MARKERS.has(name) ||
+      AGENT_FILES.has(name) ||
       name === ".git" ||
       /\.(js|mjs|cjs|jsx|ts|tsx|php|py|java|kt|kts|dart|swift|go|rs|c|cpp|h|cs|rb|vue|svelte|html)$/.test(
         name,
@@ -165,6 +175,7 @@ async function scanRoots(roots, options = {}) {
       entry.isFile() &&
       (name === ".git" ||
         name === ".project" ||
+        AGENT_FILES.has(name) ||
         /\.(code-workspace|sublime-project|sln|slnx)$/.test(name))
     );
   };
